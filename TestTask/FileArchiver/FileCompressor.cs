@@ -3,29 +3,73 @@ using System.Collections.Generic;
 using System.IO;
 using System.IO.Compression;
 using System.Text;
+using System.Threading;
 
 namespace FileArchiver
 {
     public static class FileCompressor
     {
+        static object writeLocker = new object();
+
+        private static void compressAndWriteBlocks(FileStream fileToWrite, List<byte[]> blocks)
+        {
+            List<Thread> threads = new List<Thread>();
+
+            foreach (var block in blocks)
+            {
+               Thread thread = new Thread(() =>
+                {
+                    var tempBlock = compressBlock(block);
+                    writeBlock(fileToWrite, tempBlock);
+                });
+                thread.Start();
+                thread.Join();
+            }
+
+           // foreach (var thread in threads) thread.Start();
+            //foreach (var thread in threads) thread.Join();
+        }
+        private static void prepareThread(FileStream fileToWrite, List<byte[]> blocks)
+        {
+            Thread thread = new Thread(() =>
+            {
+                compressAndWriteBlocks(fileToWrite, blocks);
+            });
+            thread.Start();
+            thread.Join();
+        }
         public static string CompressFile(string filePath)
         {
             using var srcFile = File.OpenRead(filePath);
             using var compressedFile = File.Create(filePath + ".gz");
 
+            List<byte[]> blocks = new List<byte[]>();
             while (true)
             {
-                byte[] block =  ReadBlock(srcFile, 1024 * 1024);
-                if (block.Length == 0) break;
-                block = CompressBlock(block);
+                byte[] block = readBlock(srcFile, 1024 * 1024);
+                if (block.Length == 0)
+                {
+                    if (blocks.Count > 0)
+                    {
+                        prepareThread(compressedFile, blocks);
+                        blocks = new List<byte[]>();
+                    }
+                    break;
+                }
 
-                WriteBlock(compressedFile, block);
+                blocks.Add(block);
+
+                if (blocks.Count == 5)
+                {
+                    prepareThread(compressedFile, blocks);
+                    blocks = new List<byte[]>();
+                }
             }
 
             return "";
         }
 
-        private static byte[] ReadBlock(FileStream fileToRead, int blockLen)
+        private static byte[] readBlock(FileStream fileToRead, int blockLen)
         {
             byte[] block = new byte[blockLen];
             int countOfReadBytes = fileToRead.Read(block);
@@ -34,7 +78,7 @@ namespace FileArchiver
             return block;
         }
 
-        private static byte[] CompressBlock(byte[] block)
+        private static byte[] compressBlock(byte[] block)
         {
             using var compressBlockStream = new MemoryStream();
             using (var compressionStream = new GZipStream(compressBlockStream, CompressionMode.Compress))
@@ -45,10 +89,13 @@ namespace FileArchiver
 
             return compressBlockStream.ToArray();
         }
-        private static void WriteBlock(FileStream fileToWrite, byte[] block)
+        private static void writeBlock(FileStream fileToWrite, byte[] block)
         {
-            fileToWrite.Write(BitConverter.GetBytes(block.Length));
-            fileToWrite.Write(block);
+            lock (writeLocker)
+            {
+                fileToWrite.Write(BitConverter.GetBytes(block.Length));
+                fileToWrite.Write(block);
+            }
         }
         
     }

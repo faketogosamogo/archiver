@@ -4,36 +4,79 @@ using System.Drawing;
 using System.IO;
 using System.IO.Compression;
 using System.Text;
+using System.Threading;
 
 namespace FileArchiver
 {
-    class FileDecompressor
+    public class FileDecompressor
     {
-       public static string DecompressFile(string filePath)
-       { 
+        static object writeLocker = new object();
+
+        private static void decompressAndWriteBlocks(FileStream fileToWrite, List<byte[]> blocks)
+        {
+            List<Thread> threads = new List<Thread>();
+            
+            foreach(var block in blocks)
+            {
+                Thread thread = new Thread(() =>
+                {
+                    var tempBlock = decompressBlock(block);
+                    writeBlock(fileToWrite, tempBlock);
+                });
+                thread.Start();
+                thread.Join();
+            }
+           // foreach (var thread in threads) thread.Start();
+            //foreach (var thread in threads) thread.Join();
+        }
+        private static void prepareThread(FileStream fileToWrite, List<byte[]> blocks)
+        {
+            Thread thread = new Thread(() =>
+            {
+                decompressAndWriteBlocks(fileToWrite, blocks);
+            });
+            thread.Start();
+            thread.Join();
+        }
+        public static string DecompressFile(string filePath)
+        { 
             using var srcFile = File.OpenRead(filePath);
             using var decompressedFile = File.OpenWrite(filePath + "1");
 
+
+            List<byte[]> blocks = new List<byte[]>();
             while (true)
             {
-                int blockLen = GetBlockLen(srcFile);
-                if (blockLen == 0) break;
+                int blockLen = getBlockLen(srcFile);               
+                byte[] block = readBlock(srcFile, blockLen);
+                if (block.Length == 0)
+                {
+                    if (blocks.Count > 0)
+                    {
+                        prepareThread(decompressedFile, blocks);
+                        blocks = new List<byte[]>();
+                    }
+                    break;
+                }
 
-                byte[] block = ReadBlock(srcFile, blockLen);
-                if (block.Length == 0) break;
-                block = DecompressBlock(block);
-                WriteBlock(decompressedFile,block);
+                blocks.Add(block);
+
+                if (blocks.Count == 5)
+                {
+                    prepareThread(decompressedFile, blocks);
+                    blocks = new List<byte[]>();
+                }
             }
             return decompressedFile.Name;
         }
-        private static int GetBlockLen(FileStream fileToRead)
+        private static int getBlockLen(FileStream fileToRead)
         {
             byte[] sizeBuffer = new byte[4];
             fileToRead.Read(sizeBuffer);
             int blockLen = BitConverter.ToInt32(sizeBuffer);
             return blockLen;
         }
-        private static byte[] ReadBlock(FileStream fileToRead, int blockLen)
+        private static byte[] readBlock(FileStream fileToRead, int blockLen)
         {
             byte[] block = new byte[blockLen];
             int countOfReadBytes = fileToRead.Read(block);
@@ -41,7 +84,7 @@ namespace FileArchiver
             return block;
         }
        
-        private static byte[] DecompressBlock(byte[] block)
+        private static byte[] decompressBlock(byte[] block)
         {
             using var srcBlockStream = new MemoryStream(block);
             using var decompressBlockStream = new MemoryStream();
@@ -54,9 +97,12 @@ namespace FileArchiver
 
             return decompressBlockStream.ToArray();
         }
-        private static void WriteBlock(FileStream fileToWrite, byte[] block)
+        private static void writeBlock(FileStream fileToWrite, byte[] block)
         {
-            fileToWrite.Write(block);
+            lock (writeLocker)
+            {
+                fileToWrite.Write(block);
+            }
         }
 
     }
