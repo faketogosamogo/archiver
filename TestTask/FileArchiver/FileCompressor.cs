@@ -7,10 +7,19 @@ using System.Threading;
 
 namespace FileArchiver
 {
+    //TODO: что я понял и что мне нужно реализовать
+    //Запись в файл разбивать смысла нет, т.к это в один конечный файл(это в любом случае lock и будет только имитация многопоточности, и выигрыша нет, 
+        //если только записывать в определённые места, но мы не знаем конечный размер сжатого блока, можно резервировать, а после убирать пробелы, но это геморойно и долго
+    //Все упирается в запись, её не ускорить
+    //Чтение + сжате по логике дольше, чем запись
+    //Поэтому следует перед записью, эти 2 операции распаралелить
+
+    
     public static class FileCompressor
     {
         static object writeLocker = new object();
 
+       
         private static void compressAndWriteBlocks(FileStream fileToWrite, List<byte[]> blocks)
         {
             List<Thread> threads = new List<Thread>();
@@ -24,10 +33,7 @@ namespace FileArchiver
                 });
                 thread.Start();
                 thread.Join();
-            }
-
-           // foreach (var thread in threads) thread.Start();
-            //foreach (var thread in threads) thread.Join();
+            }       
         }
         private static void prepareThread(FileStream fileToWrite, List<byte[]> blocks)
         {
@@ -73,7 +79,7 @@ namespace FileArchiver
         {
             byte[] block = new byte[blockLen];
             int countOfReadBytes = fileToRead.Read(block);
-
+            
             Array.Resize(ref block, countOfReadBytes);
             return block;
         }

@@ -11,7 +11,7 @@ namespace FileArchiver
     public class FileDecompressor
     {
         static object writeLocker = new object();
-
+   
         private static void decompressAndWriteBlocks(FileStream fileToWrite, List<byte[]> blocks)
         {
             List<Thread> threads = new List<Thread>();
