@@ -5,6 +5,9 @@ using System.Text;
 
 namespace FileArchiver
 {
+    /// <summary>
+    /// Интерфейс записи блока в поток
+    /// </summary>
     public interface IBlockStreamWriter
     {
         /// <summary>
@@ -13,15 +16,18 @@ namespace FileArchiver
         /// (Резервировать место, а после убирать пробелы посчитал нецелесообразным)
         /// </summary>
         /// <param name="streamToWrite">Поток для записи</param>
+        /// /// <param name="startPos">Позиция начала старта записи</param>
         /// <param name="block">Записываемый блок</param>
-        void WriteBlock(Stream streamToWrite, byte[] block);
+        void WriteBlock(Stream streamToWrite, long startPos, byte[] block);
     }
-
-    public class BlockFileStreamWriter : IBlockStreamWriter
+    /// <summary>
+    /// Реализация IBlockStreamWriter
+    /// </summary>
+    public class BlockStreamWriter : IBlockStreamWriter
     {
-        public void WriteBlock(Stream streamToWrite, byte[] block)
+        public void WriteBlock(Stream streamToWrite, long startPos, byte[] block)
         {
-            Console.WriteLine($"write block: block lenght: {block.Length}");
+            //Console.WriteLine($"write block: block lenght: {block.Length}");
             streamToWrite.Write(block);
         }
     }

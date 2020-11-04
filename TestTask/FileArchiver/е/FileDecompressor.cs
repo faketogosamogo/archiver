@@ -43,6 +43,8 @@ namespace FileArchiver
             using var srcFile = File.OpenRead(filePath);
             using var decompressedFile = File.OpenWrite(filePath + "1");
 
+            byte[] sizeBuffer = new byte[4];
+            srcFile.Read(sizeBuffer);
 
             List<byte[]> blocks = new List<byte[]>();
             while (true)

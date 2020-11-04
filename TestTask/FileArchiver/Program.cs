@@ -7,16 +7,20 @@ namespace FileArchiver
     {
         static void Main(string[] args)
         {
-            MultithreadFileCompressor fileCompressor = new MultithreadFileCompressor(new BlockGzipCompressor(), new BlockFileStreamWriter(), new BlockFileStreamReader());
+            MultithreadFileCompressor fileCompressor = new MultithreadFileCompressor(new BlockGziper(), new BlockStreamWriter(), new BlockStreamReader());
+            MultithreadFileDecompressor fileDecompressor = new MultithreadFileDecompressor(new BlockGziper(), new BlockStreamWriter(), new BlockStreamReader());
             Stopwatch stopwatch = Stopwatch.StartNew();
-            fileCompressor.CompressFile(@"H:\5d1f09e185e17.vid", @"H:\5d1f09e185e17.vidgz");
+            fileCompressor.CompressFile(@"H:\5d1f09e185e1.vid", @"H:\5d1f09e185e1.vidgz");
             stopwatch.Stop();
-            Console.WriteLine(stopwatch.ElapsedMilliseconds / 1000);
+            //Console.WriteLine(stopwatch.ElapsedMilliseconds / 1000);
 
             // FileCompressor.CompressFile(@"H:\5d1f09e185e17.vid");
             stopwatch.Start();
-            FileDecompressor.DecompressFile(@"H:\5d1f09e185e17.vidgz");
+           // FileDecompressor.DecompressFile(@"H:\5d1f09e185e1.vidgz");
+            fileDecompressor.DecompressFile(@"H:\5d1f09e185e1.vidgz", @"H:\5d1f09e185e1TTT.vid");
             stopwatch.Stop();
+
+
             Console.WriteLine(stopwatch.ElapsedMilliseconds / 1000);
         }
     }

@@ -10,10 +10,11 @@ namespace FileArchiver
     public interface IFileDecompressor
     {
         /// <summary>
-        /// Метод разжатия файла
+        /// Метод сжатия файла
         /// </summary>
-        /// <param name="filePath">Путь к файлу для расжатия</param>
-        /// <returns>Расжатый файл</returns>
-        public string DecompressFile(string filePath);
+        /// <param name="inputFilePath">Путь к сжатому файлу</param>
+        /// <param name="outputFilePath">Путь к расжатому файлу</param>
+        /// <returns>Путь к сжатому файлу</returns>
+        public void DecompressFile(string inputFilePath, string outputFilePath);
     }
 }

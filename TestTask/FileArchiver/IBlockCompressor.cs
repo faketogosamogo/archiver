@@ -6,6 +6,9 @@ using System.Text;
 
 namespace FileArchiver { 
 
+    /// <summary>
+    /// Интерфейс сжатия блока
+    /// </summary>
     public interface IBlockCompressor
     {
         /// <summary>
@@ -13,22 +16,7 @@ namespace FileArchiver {
         /// </summary>
         /// <param name="block">Блок для сжатия</param>
         /// <returns>Сжатый блок</returns>
-        byte[] CompressBlock(byte[] block);
+        byte[] CompressBlock(byte[] block);        
     }
-
-    public class BlockGzipCompressor : IBlockCompressor
-    {
-        public byte[] CompressBlock(byte[] block)
-        {
-            using var compressBlockStream = new MemoryStream();
-            using (var compressionStream = new GZipStream(compressBlockStream, CompressionMode.Compress))
-            {
-                compressionStream.Write(block);
-            }
-            var compressedBlock = compressBlockStream.ToArray();
-
-            Console.WriteLine($"compress block: block lenght: {block.Length}, after compress: {compressedBlock.Length}");
-            return compressedBlock;
-        }
-    }
+   
 }
