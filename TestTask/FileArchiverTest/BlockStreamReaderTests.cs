@@ -37,7 +37,7 @@ namespace FileArchiverTest
         {
             Assert.Throws<NullReferenceException>(()=>blockReader.ReadBlock(null, 1, 3));
         }
-
+       
         [Test]
         public void ReadBlock_should_throw_OverflowException()
         {

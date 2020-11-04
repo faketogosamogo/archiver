@@ -32,7 +32,7 @@ namespace FileArchiver
         //длина обрабатываемого блока
         private static int _blockLen = (1024 * 1024) * 10;
         //количество одновременно запускаемых потоков
-        private static int _threadsCount = 5;
+        private static int _threadsCount = 15;
 
         private static object _currentIndexLocker = new object();
         private static object _writeLocker = new object();
@@ -63,15 +63,13 @@ namespace FileArchiver
 
                 block = _blockCompressor.CompressBlock(block);
 
-                var blockSize = BitConverter.GetBytes(block.Length);
-                var blockWithSize = new byte[blockSize.Length + block.Length];
-                blockSize.CopyTo(blockWithSize, 0);
-                block.CopyTo(blockWithSize, blockSize.Length);//Записываем длину сжатого блока для дальнейшего расжатия              
+                var blockLen = BitConverter.GetBytes(block.Length);
+                var blockWithLen = new byte[blockLen.Length + block.Length];
 
-                lock (_writeLocker)
-                {
-                    _blockWriter.WriteBlock(_outputFile, _outputFile.Position, blockWithSize);
-                }
+                blockLen.CopyTo(blockWithLen, 0);
+                block.CopyTo(blockWithLen, blockLen.Length);//Записываем длину сжатого блока для дальнейшего расжатия              
+
+                _blockWriter.WriteBlock(_outputFile, _outputFile.Position, blockWithLen);
             }
         }
         public void CompressFile(string inputFilePath, string outputFilePath)
@@ -85,7 +83,7 @@ namespace FileArchiver
              for (int i = 0; i < _threadsCount; i++) threads.Add(new Thread(oneThreadBlockOperations));
             foreach (var th in threads) th.Start();
             foreach (var th in threads) th.Join();
-          
+
             _outputFile.Dispose();       
         }
     }

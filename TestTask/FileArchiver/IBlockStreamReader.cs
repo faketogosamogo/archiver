@@ -30,8 +30,8 @@ namespace FileArchiver
             streamForRead.Position = startPos;
 
             int countOfReadedBytes = streamForRead.Read(block);
-            //Console.WriteLine($"read block, start index: {start}, lenght of block: {blockLen}, count of readed bytes: {countOfReadedBytes}");
             Array.Resize(ref block, countOfReadedBytes);
+          //  Console.WriteLine($"reader: pos: {streamForRead.Position}, startpos: {startPos}, blockLen: {blockLen}, countOfReadedBytes: {countOfReadedBytes}");
             return block;
         }
     }

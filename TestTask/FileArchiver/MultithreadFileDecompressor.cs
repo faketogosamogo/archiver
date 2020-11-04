@@ -15,15 +15,16 @@ namespace FileArchiver
         private IBlockStreamReader _blockReader;
         private IBlockStreamWriter _blockWriter;
 
+        private static FileStream _outputFile;
         private static FileStream _inputFile;
         private string _outputFilePath;
 
         //используется для поблочой записи в файл
         private static int _currentWriteIndex = 0;
         //длина обрабатываемого блока
-        private static int _blockLen = 0;
+        private static int _blockLen = 1;
         //количество одновременно запускаемых потоков
-        private static int _threadsCount = 5;
+        private static int _threadsCount = 15;
 
 
         private static object _currentIndexLocker = new object();
@@ -48,16 +49,17 @@ namespace FileArchiver
         {
             while (true)
             {
-                int nextBlockLen = getNextBlockLen(_inputFile);
-                if (nextBlockLen == 0) return;
+                
                 byte[] block = new byte[0];
                 lock (_readLocker)
                 {
-                    block = _blockReader.ReadBlock(_inputFile, _inputFile.Position, nextBlockLen);
+                    int nextBlockLen = getNextBlockLen(_inputFile);
+                    if (nextBlockLen == 0) return;
+                    block = _blockReader.ReadBlock(_inputFile, _inputFile.Position, nextBlockLen);                    
                 }
                 if (block.Length == 0) return;
                 block = _blockDecompressor.DecompressBlock(block);
-                using var outputFile = File.OpenWrite(_outputFilePath);
+                //using var outputFile = File.OpenWrite(_outputFilePath);
 
                 int startPos = 0;
                 lock (_currentIndexLocker)
@@ -65,8 +67,7 @@ namespace FileArchiver
                     startPos = _blockLen * _currentWriteIndex;
                     _currentWriteIndex++;
                 }
-
-                _blockWriter.WriteBlock(outputFile, startPos, block);
+                _blockWriter.WriteBlock(_outputFile, startPos, block);
             }
         }
 
@@ -74,6 +75,7 @@ namespace FileArchiver
         {
             _outputFilePath = outputFilePath;
             _inputFile = File.OpenRead(inputFilePath);
+            _outputFile = File.OpenWrite(outputFilePath);
 
             byte[] sizeBuffer = new byte[4];
             _inputFile.Read(sizeBuffer);
