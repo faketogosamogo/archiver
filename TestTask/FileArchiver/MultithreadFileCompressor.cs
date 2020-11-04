@@ -15,7 +15,7 @@ namespace FileArchiver
         //TODO: Сделать так чтобы потоки не пересоздавались
 
         int _threadsCount;
-        int _blockLen = 64;
+        int _blockLen = (1024*1024);
 
         List<Thread> _readingThreads;
         static object _writeLocker = new object();
@@ -37,22 +37,36 @@ namespace FileArchiver
             bool fileIsReaded = false;
             while (true)
             {
-                for (int i = 0; i < _threadsCount; i++)
+                var block = readBlock(lenIter * _blockLen, _blockLen);
+                if (block.Length == 0)
                 {
-                    if (!fileIsReaded)
+                    if (blocks.Count > 0)
                     {
-                        Console.WriteLine(lenIter * _blockLen);
-
-                      
-                        lenIter++;
+                        a(blocks, compressedFile);
+                        break;
                     }
                 }
-          
-                _readingThreads = new List<Thread>();
-            }                
+                blocks.Add(block);
+                if (blocks.Count == 5)
+                {
+                    a(blocks, compressedFile);
+                    blocks = new List<byte[]>();
+                    //_readingThreads = new List<Thread>();
+
+                }
+                lenIter++;
+            }
+            return "";
         }
-      
-             
+        private void a(List<byte[]> blocks, FileStream toWrite)
+        {
+            for (int i = 0; i < blocks.Count; i++)
+            {
+                blocks[i] = compressBlock(blocks[i]);
+                writeBlock(toWrite, blocks[i]);
+            }
+        }
+
         /// <summary>
         /// Считывает блок из файла
         /// </summary>
@@ -61,12 +75,13 @@ namespace FileArchiver
         /// <returns>Считанный блок(может быть меньше ожидаемого, если длина считываемого отрезка меньше чем blockLen)</returns>
         private byte[] readBlock(int start, int blockLen)
         {
-            //Console.WriteLine(start);
             var fileToRead = new FileStream(_filePath, FileMode.Open, FileAccess.Read, FileShare.Read);
             byte[] block = new byte[blockLen];
             fileToRead.Position = start;
 
             int countOfReadedBytes = fileToRead.Read(block);
+
+            Console.WriteLine($"read block, start index: {start}, lenght of block: {blockLen}, count of readed bytes: {countOfReadedBytes}");
 
             Array.Resize(ref block, countOfReadedBytes);
             return block;
@@ -77,14 +92,17 @@ namespace FileArchiver
         /// </summary>
         /// <param name="block">Блок для сжатия</param>
         /// <returns>Сжатый блок</returns>
-        private byte[] сompressBlock(byte[] block)
+        private byte[] compressBlock(byte[] block)
         {
             using var compressBlockStream = new MemoryStream();
             using (var compressionStream = new GZipStream(compressBlockStream, CompressionMode.Compress))
             {
                 compressionStream.Write(block);
             }
-            return compressBlockStream.ToArray();
+            var compressedBlock = compressBlockStream.ToArray();
+
+            Console.WriteLine($"compress block: block lenght: {block.Length}, after compress: {block.Length}");
+            return compressedBlock;
         }
 
         /// <summary>
@@ -100,6 +118,8 @@ namespace FileArchiver
             {
                 fileToWrite.Write(BitConverter.GetBytes(block.Length));//Записываем длину блока перед блоком, для возможности считывать блок в дальнейшем
                 fileToWrite.Write(block);
+                Console.WriteLine($"write block: block lenght: {block.Length}");
+
             }
         }
     }

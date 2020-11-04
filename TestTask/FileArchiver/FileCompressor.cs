@@ -17,8 +17,8 @@ namespace FileArchiver
     
     public static class FileCompressor
     {
-        static object writeLocker = new object();
-
+        private static object writeLocker = new object();
+         
        
         private static void compressAndWriteBlocks(FileStream fileToWrite, List<byte[]> blocks)
         {
