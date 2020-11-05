@@ -27,8 +27,9 @@ namespace FileArchiver
     {
         public void WriteBlock(Stream streamToWrite, long startPos, byte[] block)
         {
+            if (block.Length == 0) return;
             //Console.WriteLine($"writer: pos: {streamToWrite.Position}, startPos: {startPos}, blocksize: {block.Length}");
-            streamToWrite.Write(block);
+            streamToWrite.Write(block);            
         }
     }
 }

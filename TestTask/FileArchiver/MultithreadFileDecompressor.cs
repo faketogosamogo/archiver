@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.IO;
 using System.Text;
 using System.Threading;
+using System.Security.Cryptography;
 
 namespace FileArchiver
 {
@@ -17,14 +18,9 @@ namespace FileArchiver
 
         private static FileStream _outputFile;
         private static FileStream _inputFile;
-        private string _outputFilePath;
-
-        //используется для поблочой записи в файл
-        private static int _currentWriteIndex = 0;
-        //длина обрабатываемого блока
-        private static int _blockLen = 1;
+        
         //количество одновременно запускаемых потоков
-        private static int _threadsCount = 15;
+        private static int _threadsCount = 5;
 
 
         private static object _currentIndexLocker = new object();
@@ -47,46 +43,43 @@ namespace FileArchiver
 
         private void oneThreadBlockOperations()
         {
+
             while (true)
             {
-                
-                byte[] block = new byte[0];
                 lock (_readLocker)
                 {
+                    var block = new BlockWithPosition(new byte[0], 0);
+               
                     int nextBlockLen = getNextBlockLen(_inputFile);
-                    if (nextBlockLen == 0) return;
-                    block = _blockReader.ReadBlock(_inputFile, _inputFile.Position, nextBlockLen);                    
-                }
-                if (block.Length == 0) return;
-                block = _blockDecompressor.DecompressBlock(block);
-                //using var outputFile = File.OpenWrite(_outputFilePath);
+                    var b = new byte[8];
+                    _inputFile.Read(b);
 
-                int startPos = 0;
-                lock (_currentIndexLocker)
-                {
-                    startPos = _blockLen * _currentWriteIndex;
-                    _currentWriteIndex++;
-                }
-                _blockWriter.WriteBlock(_outputFile, startPos, block);
+                    block.Position = BitConverter.ToInt64(b); 
+                    if (nextBlockLen == 0) return;
+                    block.Block = _blockReader.ReadBlock(_inputFile, _inputFile.Position, nextBlockLen);
+                    if (block.Block.Length == 0) return;                
+
+                    block.Block = _blockDecompressor.DecompressBlock(block.Block);
+
+                    _blockWriter.WriteBlock(_outputFile, block.Position, block.Block);
+
+               }
+              
             }
         }
 
         public void DecompressFile(string inputFilePath, string outputFilePath)
         {
-            _outputFilePath = outputFilePath;
             _inputFile = File.OpenRead(inputFilePath);
             _outputFile = File.OpenWrite(outputFilePath);
-
-            byte[] sizeBuffer = new byte[4];
-            _inputFile.Read(sizeBuffer);
-            _blockLen = BitConverter.ToInt32(sizeBuffer);
-
             List<Thread> threads = new List<Thread>();
             for (int i = 0; i < _threadsCount; i++) threads.Add(new Thread(oneThreadBlockOperations));
+            
             foreach (var th in threads) th.Start();
-            foreach (var th in threads) th.Join();
-
+            foreach (var th in threads) th.Join();   
+            
             _inputFile.Dispose();
+            _outputFile.Dispose();
         }
     }
 }

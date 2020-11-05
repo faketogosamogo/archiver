@@ -26,6 +26,7 @@ namespace FileArchiver
     {
         public byte[] ReadBlock(Stream streamForRead, long startPos, int blockLen)
         {
+            if (streamForRead.Length <= startPos) return new byte[0];
             byte[] block = new byte[blockLen];
             streamForRead.Position = startPos;
 

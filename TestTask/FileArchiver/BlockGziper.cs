@@ -13,6 +13,7 @@ namespace FileArchiver
     {
         public byte[] CompressBlock(byte[] block)
         {
+            if (block.Length == 0) return new byte[0];
             using var compressBlockStream = new MemoryStream();
             using (var compressionStream = new GZipStream(compressBlockStream, CompressionMode.Compress))
             {
@@ -25,7 +26,9 @@ namespace FileArchiver
         }
 
         public byte[] DecompressBlock(byte[] block)
-        {            
+        {
+            if (block.Length == 0) return new byte[0];
+
             using var srcBlockStream = new MemoryStream(block);
             using var decompressBlockStream = new MemoryStream();
 
