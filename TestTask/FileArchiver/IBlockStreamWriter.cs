@@ -1,6 +1,7 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Security.Cryptography;
 using System.Text;
 
 namespace FileArchiver
@@ -27,8 +28,10 @@ namespace FileArchiver
     {
         public void WriteBlock(Stream streamToWrite, long startPos, byte[] block)
         {
+            MD5 md = MD5.Create();
+
+            //Console.WriteLine(Convert.ToBase64String(md.ComputeHash(block)));
             if (block.Length == 0) return;
-            //Console.WriteLine($"writer: pos: {streamToWrite.Position}, startPos: {startPos}, blocksize: {block.Length}");
             streamToWrite.Write(block);            
         }
     }

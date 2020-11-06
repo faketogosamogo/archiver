@@ -1,6 +1,7 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Security.Cryptography;
 using System.Text;
 
 namespace FileArchiver
@@ -32,7 +33,11 @@ namespace FileArchiver
 
             int countOfReadedBytes = streamForRead.Read(block);
             Array.Resize(ref block, countOfReadedBytes);
-          //  Console.WriteLine($"reader: pos: {streamForRead.Position}, startpos: {startPos}, blockLen: {blockLen}, countOfReadedBytes: {countOfReadedBytes}");
+
+            MD5 md = MD5.Create();
+
+           // Console.WriteLine(Convert.ToBase64String(md.ComputeHash(block)));
+            //  Console.WriteLine($"reader: pos: {streamForRead.Position}, startpos: {startPos}, blockLen: {blockLen}, countOfReadedBytes: {countOfReadedBytes}");
             return block;
         }
     }

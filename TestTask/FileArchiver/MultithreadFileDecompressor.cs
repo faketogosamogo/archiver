@@ -20,7 +20,7 @@ namespace FileArchiver
         private static FileStream _inputFile;
         
         //количество одновременно запускаемых потоков
-        private static int _threadsCount = 5;
+        private static int _threadsCount = 9;
 
 
         private static object _currentIndexLocker = new object();
@@ -46,24 +46,28 @@ namespace FileArchiver
 
             while (true)
             {
-                lock (_readLocker)
-                {
-                    var block = new BlockWithPosition(new byte[0], 0);
-               
-                    int nextBlockLen = getNextBlockLen(_inputFile);
-                    var b = new byte[8];
-                    _inputFile.Read(b);
-
-                    block.Position = BitConverter.ToInt64(b); 
+                var block = new BlockWithPosition(new byte[0], 0);
+                lock(_readLocker){
+                    var blockLen = new byte[4];
+                    _inputFile.Read(blockLen);
+                    int nextBlockLen = BitConverter.ToInt32(blockLen);
                     if (nextBlockLen == 0) return;
+                    var blockPos = new byte[8];
+                    _inputFile.Read(blockPos);
+
                     block.Block = _blockReader.ReadBlock(_inputFile, _inputFile.Position, nextBlockLen);
-                    if (block.Block.Length == 0) return;                
+                   
+                    if (block.Block.Length == 0) return;
 
+
+                    block.Position = BitConverter.ToInt64(blockPos);
                     block.Block = _blockDecompressor.DecompressBlock(block.Block);
+                }
 
-                    _blockWriter.WriteBlock(_outputFile, block.Position, block.Block);
+               
+                 _blockWriter.WriteBlock(_outputFile, block.Position, block.Block);
 
-               }
+               
               
             }
         }
@@ -73,11 +77,11 @@ namespace FileArchiver
             _inputFile = File.OpenRead(inputFilePath);
             _outputFile = File.OpenWrite(outputFilePath);
             List<Thread> threads = new List<Thread>();
-            for (int i = 0; i < _threadsCount; i++) threads.Add(new Thread(oneThreadBlockOperations));
-            
-            foreach (var th in threads) th.Start();
+             for (int i = 0; i < _threadsCount; i++) threads.Add(new Thread(oneThreadBlockOperations));
+
+             foreach (var th in threads) th.Start();
             foreach (var th in threads) th.Join();   
-            
+            //oneThreadBlockOperations();
             _inputFile.Dispose();
             _outputFile.Dispose();
         }
