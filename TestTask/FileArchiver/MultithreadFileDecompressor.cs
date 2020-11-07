@@ -20,7 +20,7 @@ namespace FileArchiver
         private static FileStream _inputFile;
         
         //количество одновременно запускаемых потоков
-        private static int _threadsCount = 9;
+        private static int _threadsCount = 5;
 
 
         private static object _currentIndexLocker = new object();
@@ -33,13 +33,6 @@ namespace FileArchiver
             _blockWriter = blockWriter;
         }
 
-        private static int getNextBlockLen(FileStream fileToRead)
-        {
-            byte[] sizeBuffer = new byte[4];
-            fileToRead.Read(sizeBuffer);
-            int blockLen = BitConverter.ToInt32(sizeBuffer);
-            return blockLen;
-        }
 
         private void oneThreadBlockOperations()
         {
@@ -48,12 +41,15 @@ namespace FileArchiver
             {
                 var block = new BlockWithPosition(new byte[0], 0);
                 lock(_readLocker){
+                    long pos = _outputFile.Position;
                     var blockLen = new byte[4];
                     _inputFile.Read(blockLen);
+
                     int nextBlockLen = BitConverter.ToInt32(blockLen);
                     if (nextBlockLen == 0) return;
                     var blockPos = new byte[8];
                     _inputFile.Read(blockPos);
+
 
                     block.Block = _blockReader.ReadBlock(_inputFile, _inputFile.Position, nextBlockLen);
                    
@@ -63,9 +59,10 @@ namespace FileArchiver
                     block.Position = BitConverter.ToInt64(blockPos);
                     block.Block = _blockDecompressor.DecompressBlock(block.Block);
                 }
+                MD5 md = MD5.Create();
 
-               
-                 _blockWriter.WriteBlock(_outputFile, block.Position, block.Block);
+                Console.WriteLine($"{block.Position} {block.Block.Length} md: {Convert.ToBase64String(md.ComputeHash(block.Block))}");
+                _blockWriter.WriteBlock(_outputFile, block.Position, block.Block);
 
                
               

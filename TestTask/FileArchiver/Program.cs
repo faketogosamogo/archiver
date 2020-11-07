@@ -11,7 +11,7 @@ namespace FileArchiver
             MultithreadStreamCompressor fileCompressor = new MultithreadStreamCompressor(new BlockGziper(), new BlockStreamWriter(), new BlockStreamReader());
             MultithreadFileDecompressor fileDecompressor = new MultithreadFileDecompressor(new BlockGziper(), new BlockStreamWriter(), new BlockStreamReader());
             Stopwatch stopwatch = Stopwatch.StartNew();
-          //  fileCompressor.CompressFile(@"H:\123.mp4", @"H:\123.aviz");
+            fileCompressor.CompressFile(@"H:\123.mp4", @"H:\123.aviz");
             stopwatch.Stop();
             Console.WriteLine(stopwatch.ElapsedMilliseconds / 1000);
 

@@ -41,9 +41,9 @@ namespace FileArchiver
         //используется для поблочого чтения из файла
         private static int _currentReadIndex = 0;
         //длина обрабатываемого блока
-        private static int _blockLen = (1024 * 1024) * 10;
+        private static int _blockLen = (1024 * 1024) * 20;
         //количество одновременно запускаемых потоков
-        private static int _threadsCount = 1;
+        private static int _threadsCount = 10;
 
 
         private static object _currentIndexLocker = new object();
@@ -63,40 +63,34 @@ namespace FileArchiver
             while (true)//Выбрал цикл, чтобы каждый раз не создавать поток
             {
                 var block = new BlockWithPosition(new byte[0], 0);
+                
                 lock (_currentIndexLocker)
                 {
-                    int pos = 0;
-
-                    pos = _currentReadIndex * _blockLen;
-                    _currentReadIndex++; 
-                    if (pos >= _inputFile.Length) return;
+                    int pos = _currentReadIndex * _blockLen;
+                    _currentReadIndex++;
+                    if (pos > _inputFile.Length) return;
                     block.Position = pos;
-
                     block.Block = _blockReader.ReadBlock(_inputFile, pos, _blockLen);
+              
                     if (block.Block.Length == 0)
                     {
                         return;
                     }
+                    MD5 md = MD5.Create();
+                    Console.WriteLine($"{block.Position} {block.Block.Length} md: {Convert.ToBase64String(md.ComputeHash(block.Block))}");
+
                 }
-              
-              
-
-               
-              
                 block.Block = _blockCompressor.CompressBlock(block.Block);
-
                 var blockLen = BitConverter.GetBytes(block.Block.Length);
                 var blockPos = BitConverter.GetBytes(block.Position);
                 var blockToWrite = new byte[blockLen.Length + blockPos.Length + block.Block.Length];
-
                 blockLen.CopyTo(blockToWrite, 0);
                 blockPos.CopyTo(blockToWrite, blockLen.Length);
-                Console.WriteLine(block.Position);
                 block.Block.CopyTo(blockToWrite, blockLen.Length + blockPos.Length);
                 lock (_writeLocker)
                 {
-                    
-                    _blockWriter.WriteBlock(_outputFile, _outputFile.Position, blockToWrite);
+                    long pos = _outputFile.Position;              
+                    _blockWriter.WriteBlock(_outputFile, pos, blockToWrite);
                 }
             }
         }
