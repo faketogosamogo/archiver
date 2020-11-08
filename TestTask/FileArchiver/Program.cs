@@ -4,7 +4,9 @@ using System.IO;
 
 namespace FileArchiver
 {
+
     //Certutil -hashfileme
+
     class Program
     {
         static int Main(string[] args)
