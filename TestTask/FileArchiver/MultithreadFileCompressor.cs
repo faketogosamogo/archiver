@@ -32,7 +32,7 @@ namespace FileArchiver
             IsCompress = isCompress;
         }
     }
-    public class MultithreadStreamCompressor : IFileCompressor
+    public class MultithreadFileCompressor : IFileCompressor
     {
         private IBlockCompressor _blockCompressor;
         private IBlockStreamReader _blockReader;
@@ -45,9 +45,9 @@ namespace FileArchiver
         private static object _currentReadIndexLocker = new object();
 
         //длина обрабатываемого блока
-        private static int _blockLen = (1024 * 1024) * 10;
+        private static int _blockLen;
         //количество одновременно запускаемых потоков
-        private static int _threadsCount = 5;
+        private static int _threadsCount;
 
 
         private static object _writeLocker = new object();
@@ -55,11 +55,13 @@ namespace FileArchiver
         private static string _inputFilePath;  
         private static bool _isFileClosed;
 
-        public MultithreadStreamCompressor(IBlockCompressor blockCompressor, IBlockStreamWriter blockWriter, IBlockStreamReader blockReader)
+        public MultithreadFileCompressor(IBlockCompressor blockCompressor, IBlockStreamWriter blockWriter, IBlockStreamReader blockReader, int threadsCount=5, int blockLen = (1024*1024))
         {
             _blockCompressor = blockCompressor;
             _blockReader = blockReader;
             _blockWriter = blockWriter;
+            _blockLen = blockLen;
+            _threadsCount = threadsCount;
         }     
         private void ReadAndCompressBlocks()
         {
@@ -84,10 +86,6 @@ namespace FileArchiver
 
                     var block = _blockReader.ReadBlock(inputFile, pos, _blockLen);
                     if (block.Length == 0) return;
-                    MD5 md = MD5.Create();
-
-                    Console.WriteLine(Convert.ToBase64String(md.ComputeHash(block)) + " " + pos);
-
                     block = _blockCompressor.CompressBlock(block);
                     blocks.Add(new BlockWithPosition(block, pos, true));
                 }
@@ -115,11 +113,15 @@ namespace FileArchiver
         public void CompressFile(string inputFilePath, string outputFilePath)
         {
             _inputFilePath = inputFilePath;
-            _outputFile = File.OpenWrite(outputFilePath);
-            Console.WriteLine(_blockLen);
 
-            _outputFile.Write(BitConverter.GetBytes(_blockLen));
-
+            try
+            {
+                _outputFile = File.OpenWrite(outputFilePath);
+            }catch(Exception ex)
+            {
+                Console.WriteLine($"MultithreadFileCompressor: CompressFile: Ошибка доступа к файлу для сжатия, ex: {ex.Message}, trace: {ex.StackTrace}");
+                throw;
+            }
             List<Thread> threads = new List<Thread>();
 
             for (int i = 0; i < _threadsCount; i++) threads.Add(new Thread(ReadAndCompressBlocks));

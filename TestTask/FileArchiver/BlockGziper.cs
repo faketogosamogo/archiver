@@ -21,7 +21,6 @@ namespace FileArchiver
             }
             var compressedBlock = compressBlockStream.ToArray();
 
-            //Console.WriteLine($"compress block: block lenght: {block.Length}, after compress: {compressedBlock.Length}");
             return compressedBlock;
         }
 
@@ -37,7 +36,6 @@ namespace FileArchiver
                 decompressionStream.CopyTo(decompressBlockStream);
             }
             var decompressedBlock = decompressBlockStream.ToArray();
-         //   Console.WriteLine($"decompress block: block lenght: {block.Length}, after decompress: {decompressedBlock.Length}");
             return decompressedBlock;
         }
     }

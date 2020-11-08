@@ -36,9 +36,9 @@ namespace FileArchiverTest
         }
 
         [Test]
-        public void CompressBlock_should_return_Not_null()
+        public void CompressBlock_should_throw_NullReferenceException()
         {
-            Assert.NotNull(blockGziper.CompressBlock(null));
+            Assert.Throws<NullReferenceException>(() => blockGziper.CompressBlock(null));
         }
 
         [Test]
@@ -67,7 +67,7 @@ namespace FileArchiverTest
         [Test]
         public void DecompressBlock_should_throw_ArgumentNullException()
         {
-            Assert.Throws<ArgumentNullException>(()=> blockGziper.DecompressBlock(null));
+            Assert.Throws<NullReferenceException>(()=> blockGziper.DecompressBlock(null));
         }
 
         [Test]

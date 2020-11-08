@@ -34,6 +34,23 @@ namespace FileArchiverTest
 
             blockWriter.WriteBlock(stream, stream.Position, second);
             Assert.AreEqual(equalSecond, stream.ToArray());
-        }   
+        }
+
+        [Test]
+        public void WriteBlock_should_throw_NullReferenceException()
+        {
+            using MemoryStream stream = new MemoryStream();
+
+            Assert.Throws<NullReferenceException>(() => blockWriter.WriteBlock(stream, 1, null));
+            Assert.Throws<NullReferenceException>(() => blockWriter.WriteBlock(null, 1, null));
+        }
+        [Test]
+        public void WriteBlock_should_throw_ArgumentOutOfRangeException()
+        {
+            using MemoryStream stream = new MemoryStream();
+
+            Assert.Throws<ArgumentOutOfRangeException>(() => blockWriter.WriteBlock(stream, -100, new byte[5]));
+        }
+
     }
 }
