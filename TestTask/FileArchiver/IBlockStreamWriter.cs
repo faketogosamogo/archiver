@@ -28,10 +28,8 @@ namespace FileArchiver
     {
         public void WriteBlock(Stream streamToWrite, long startPos, byte[] block)
         {
-            MD5 md = MD5.Create();
-
-            //Console.WriteLine(Convert.ToBase64String(md.ComputeHash(block)));
             if (block.Length == 0) return;
+            streamToWrite.Position = startPos;
             streamToWrite.Write(block);            
         }
     }

@@ -30,14 +30,10 @@ namespace FileArchiver
             if (streamForRead.Length <= startPos) return new byte[0];
             byte[] block = new byte[blockLen];
             streamForRead.Position = startPos;
-
             int countOfReadedBytes = streamForRead.Read(block);
             Array.Resize(ref block, countOfReadedBytes);
 
-            MD5 md = MD5.Create();
 
-           // Console.WriteLine(Convert.ToBase64String(md.ComputeHash(block)));
-            //  Console.WriteLine($"reader: pos: {streamForRead.Position}, startpos: {startPos}, blockLen: {blockLen}, countOfReadedBytes: {countOfReadedBytes}");
             return block;
         }
     }
