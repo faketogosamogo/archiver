@@ -11,24 +11,7 @@ namespace FileArchiver
     {
         static int Main(string[] args)
         {
-            if (args.Length == 0)
-            {
-                MultithreadFileCompressor fileCompressor = new MultithreadFileCompressor(new BlockGziper(), new BlockStreamWriter(), new BlockStreamReader());
-                MultithreadFileDecompressor fileDecompressor = new MultithreadFileDecompressor(new BlockGziper(), new BlockStreamWriter(), new BlockStreamReader());
-
-                Stopwatch stopwatch = Stopwatch.StartNew();
-
-                fileCompressor.CompressFile(@"H:\1.jpg", @"H:\1.jpgz");
-                stopwatch.Stop();
-
-                Console.WriteLine(stopwatch.ElapsedMilliseconds / 1000);
-
-                stopwatch.Start();
-                fileDecompressor.DecompressFile(@"H:\1.jpgz", @"H:\11.jpg");
-                stopwatch.Stop();
-
-                Console.WriteLine(stopwatch.ElapsedMilliseconds / 1000);
-            }else if (args.Length == 3)
+            if (args.Length == 3)
             {
 
                 while (true)
@@ -61,19 +44,32 @@ namespace FileArchiver
                     {
                         if(args[0]== "compress")
                         {
-                            MultithreadFileCompressor fileCompressor = new MultithreadFileCompressor(new BlockGziper(), new BlockStreamWriter(), new BlockStreamReader());
-                            fileCompressor.CompressFile(args[1], args[2]);
-
-                            Console.WriteLine("Файл сжат!");
+                            MultithreadFileCompressor fileCompressor = new MultithreadFileCompressor(new BlockGziper(), new BlockStreamWriter(), new BlockStreamReader());                           
+                            if (fileCompressor.CompressFile(args[1], args[2]))
+                            {
+                                Console.WriteLine("Файл сжат!");
+                                return 1;
+                            }
+                            else
+                            {
+                                Console.WriteLine("Ошибка расжатия, возможно у вас открыт файл для сжатия.");
+                                return 0;
+                            }
                         }
                         else
                         {
                             MultithreadFileDecompressor fileDecompressor = new MultithreadFileDecompressor(new BlockGziper(), new BlockStreamWriter(), new BlockStreamReader());
-                            fileDecompressor.DecompressFile(args[1], args[2]);
-
-                            Console.WriteLine("Файл расжат");
+                            if(fileDecompressor.DecompressFile(args[1], args[2]))
+                            {
+                                Console.WriteLine("Файл расжат");
+                                return 1;
+                            }
+                            else
+                            {
+                                Console.WriteLine("Ошибка расжатия, возможно у вас открыт файл для расжатия.");
+                                return 0;
+                            }
                         }
-                        return 0;
                     }
                     else
                     {

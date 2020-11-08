@@ -14,7 +14,7 @@ namespace FileArchiver
         /// </summary>
         /// <param name="inputFilePath">Путь к сжимаемому файлу</param>
         /// <param name="outputFilePath">Путь к сжатому файлу</param>
-        /// <returns>Путь к сжатому файлу</returns>
-        void CompressFile(string inputFilePath, string outputFilePath);
+        /// <returns>Успешно ли сжатие</returns>
+        public bool CompressFile(string inputFilePath, string outputFilePath);
     }
 }

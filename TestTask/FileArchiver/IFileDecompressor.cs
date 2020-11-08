@@ -14,7 +14,7 @@ namespace FileArchiver
         /// </summary>
         /// <param name="inputFilePath">Путь к сжатому файлу</param>
         /// <param name="outputFilePath">Путь к расжатому файлу</param>
-        /// <returns>Путь к сжатому файлу</returns>
-        public void DecompressFile(string inputFilePath, string outputFilePath);
+        /// <returns>Успешно ли расжатие</returns>
+        public bool DecompressFile(string inputFilePath, string outputFilePath);
     }
 }
