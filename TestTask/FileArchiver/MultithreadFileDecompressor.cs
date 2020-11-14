@@ -112,7 +112,7 @@ namespace FileArchiver
             catch (Exception ex)
             {
                 Console.WriteLine($"{ex.Message}, {ex.StackTrace}");
-                Console.WriteLine($"{ex.InnerException.Message}, {ex.InnerException.StackTrace}");
+               // Console.WriteLine($"{ex.InnerException.Message}, {ex.InnerException.StackTrace}");
                 if (File.Exists(outputFilePath)) File.Delete(outputFilePath);
                 return false;
             }
