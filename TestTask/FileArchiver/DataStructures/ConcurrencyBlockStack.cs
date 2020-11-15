@@ -66,6 +66,7 @@ namespace FileArchiver.DataStructures
             lock (_blocksLocker)//Не уверен, что нужен отдельный locker, т.к обращаемся и из другой функции
             {
                 _isStopWritingBlocks = true;
+                //Monitor.PulseAll(_blocksLocker);
             }
         }
         /// <summary>

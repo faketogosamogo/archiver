@@ -28,7 +28,7 @@ namespace FileArchiver.BlockServices
     {
         public void WriteBlock(Stream streamToWrite, long startPos, byte[] block)
         {
-            if (block.Length == 0) return;
+            if (block.Length == 0) return;        
             streamToWrite.Position = startPos;
             streamToWrite.Write(block);            
         }

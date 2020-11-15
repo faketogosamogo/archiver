@@ -49,9 +49,10 @@ namespace FileArchiver
         private static object _writeLocker = new object();        
         private static string _inputFilePath;      
 
-        ConcurrencyBlockStack _readedBlocks;
-        ConcurrencyBlockStack _compressedBlocks;
-        public MultithreadFileCompressor(IBlockCompressor blockCompressor, IBlockStreamWriter blockWriter, IBlockStreamReader blockReader, int threadsCount=5, int blockLen = (1024*1024)*10)
+        private ConcurrencyBlockStack _readedBlocks;
+        private ConcurrencyBlockStack _compressedBlocks;
+        public MultithreadFileCompressor(IBlockCompressor blockCompressor, IBlockStreamWriter blockWriter, IBlockStreamReader blockReader,
+                                         int threadsCount=5, int blockLen = (1024*1024)*10)
         {
             _blockCompressor = blockCompressor;
             _blockReader = blockReader;
@@ -62,7 +63,7 @@ namespace FileArchiver
             _readedBlocks = new ConcurrencyBlockStack();
             _compressedBlocks = new ConcurrencyBlockStack();
         }     
-        private void readBlockThread()
+        private void readBlocksThread()
         {
             while (true)
             {
@@ -97,7 +98,7 @@ namespace FileArchiver
             }
 
         }
-        private void compressBlockThread()
+        private void compressBlocksThread()
         {
             while (true)
             {
@@ -113,14 +114,13 @@ namespace FileArchiver
                 _compressedBlocks.Push(block);
             }
         }
-        private void writeBlockThread()
+        private void writeBlocksThread()
         {
             while (true)
             {              
                
                 var block =  _compressedBlocks.Pop();
                 if (block == null) return;
-                Console.WriteLine(block.Position);
 
                 var blockWithPosLen = new byte[8 + 4 + block.Block.Length];
                 BitConverter.GetBytes(block.Position).CopyTo(blockWithPosLen, 0);
@@ -158,9 +158,9 @@ namespace FileArchiver
 
                 for (int i = 0; i < _threadsCount; i++)
                 {
-                    readThreads.Add(new Thread(readBlockThread));
-                    compressThreads.Add(new Thread(compressBlockThread));
-                    writeThreads.Add(new Thread(writeBlockThread));
+                    readThreads.Add(new Thread(readBlocksThread));
+                    compressThreads.Add(new Thread(compressBlocksThread));
+                    writeThreads.Add(new Thread(writeBlocksThread));
                 }
                 for (int i = 0; i < _threadsCount; i++)
                 {
