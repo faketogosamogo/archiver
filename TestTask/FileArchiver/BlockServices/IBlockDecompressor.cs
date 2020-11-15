@@ -2,7 +2,7 @@
 using System.Collections.Generic;
 using System.Text;
 
-namespace FileArchiver
+namespace FileArchiver.BlockServices
 {
     public interface IBlockDecompressor
     { /// <summary>

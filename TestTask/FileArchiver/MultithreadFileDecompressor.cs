@@ -1,11 +1,10 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.IO;
-using System.Text;
 using System.Threading;
-using System.Security.Cryptography;
 using System.Collections.Concurrent;
-using FileArchiver.Exceptions;
+using FileArchiver.BlockServices;
+using FileArchiver.BlockServices.Exceptions;
 
 namespace FileArchiver
 {

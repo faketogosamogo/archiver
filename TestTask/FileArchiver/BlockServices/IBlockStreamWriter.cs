@@ -4,7 +4,7 @@ using System.IO;
 using System.Security.Cryptography;
 using System.Text;
 
-namespace FileArchiver
+namespace FileArchiver.BlockServices
 {
     /// <summary>
     /// Интерфейс записи блока в поток

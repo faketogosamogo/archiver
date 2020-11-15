@@ -2,24 +2,23 @@
 using System.Collections.Generic;
 using System.IO;
 using System.Threading;
-using System.Collections.Concurrent;
-using FileArchiver.Exceptions;
+using FileArchiver.BlockServices;
+using FileArchiver.DataStructures;
+using FileArchiver.BlockServices.Exceptions;
 
 namespace FileArchiver
 {
     /// <summary>
     /// Мультипоточная реализация IFileCompressor.
     /// В своей реализации работает поблочно с файлом.
-    /// (Считывает и Сжимает) блоки -> Записывает блоки.
-    ///Запись в файл происходит постепенно(не мультипоточно).
-    ///Это было выбрано в связи с тем, что в конечном итоге при использовании нескольких потоков для ускорения сжатия, минимально возможное время сводится к записи в файл,
-    ///т.к разбивать поблочно файл для записи нецелесообразно в связи с неизвестностью размера сжатых блоков
-    ///Вначале записывается позиция блока в исходном файле, далее длина записанного блока, далее сам блок.
+    /// Считывает -> Сжимает -> Записывает блоки.  
+        ///(Считывание из файла и запись в коллекцию считанных блоков) | (Считывание из коллекции считанных блоков, сжатие, запись в коллекцию сжатых блоков) |
+            ///(Считывание из коллекции сжатых блоков и запись в файл)
 
     ///С организацией нагрузки не справился, думал брать из ComputerInfo.AvailableVirtualMemory, и назначать размеру блока количество свободной оперативной памяти/(количество потоков ^ 3),
-        ///(количество потоков ^ 3) т.ктакое количество у меня может в раз находиться в худшем раскладе(в моём представлении)в каждом потоке вызывается количество считываний равное потокам
+    ///(количество потоков ^ 3) т.ктакое количество у меня может в раз находиться в худшем раскладе(в моём представлении)в каждом потоке вызывается количество считываний равное потокам
     ///Но не нашёл его аналога, поэтому пока решил оставить так.
-    class BlockWithPosition
+    public class BlockWithPosition
     {
         public byte[] Block { get; set; }
         public long Position { get; set; }
@@ -47,17 +46,11 @@ namespace FileArchiver
         //количество одновременно запускаемых потоков
         private static int _threadsCount;
 
-        private static object _writeLocker = new object();
-        private static object _notCompressedBlocksLocker = new object();
-        private static object _compressedBlocksLocker = new object();
-        
-        private static string _inputFilePath;  
+        private static object _writeLocker = new object();        
+        private static string _inputFilePath;      
 
-        private static bool _isFileClosed;
-        private static bool _isFileCompressed;
-
-        ConcurrentStack<BlockWithPosition> _notCompressedBlocks;
-        ConcurrentStack<BlockWithPosition> _compressedBlocks;
+        ConcurrencyBlockStack _readedBlocks;
+        ConcurrencyBlockStack _compressedBlocks;
         public MultithreadFileCompressor(IBlockCompressor blockCompressor, IBlockStreamWriter blockWriter, IBlockStreamReader blockReader, int threadsCount=5, int blockLen = (1024*1024)*10)
         {
             _blockCompressor = blockCompressor;
@@ -65,13 +58,15 @@ namespace FileArchiver
             _blockWriter = blockWriter;
             _blockLen = blockLen;
             _threadsCount = threadsCount;
-            _notCompressedBlocks = new ConcurrentStack<BlockWithPosition>();
-            _compressedBlocks = new ConcurrentStack<BlockWithPosition>();
+
+            _readedBlocks = new ConcurrencyBlockStack();
+            _compressedBlocks = new ConcurrencyBlockStack();
         }     
         private void readBlockThread()
         {
             while (true)
             {
+                if (_readedBlocks.Count() >= _threadsCount) continue; //Регулирование одновременно хранимых считанных блоков
                 long pos = 0;
                 using var inputFile = File.OpenRead(_inputFilePath);
 
@@ -81,7 +76,7 @@ namespace FileArchiver
                     _currentReadIndex++;
                     if (pos >= inputFile.Length)
                     {
-                        _isFileClosed = true;
+                        _readedBlocks.StopWriting();
                         break;
                     }
                 }
@@ -97,7 +92,8 @@ namespace FileArchiver
                   //  throw new ReadBlockException($"Ошибка чтения блока: {ex.Message}, {ex.StackTrace}", ex);
                     Console.WriteLine($"ex: {ex.Message}");
                 }
-                _notCompressedBlocks.Push(new BlockWithPosition(block, pos));
+
+                _readedBlocks.Push(new BlockWithPosition(block, pos));
             }
 
         }
@@ -105,16 +101,13 @@ namespace FileArchiver
         {
             while (true)
             {
-                lock (_compressedBlocksLocker)
-                    if (_notCompressedBlocks.Count == 0 && _isFileClosed)
-                    {
-                        _isFileCompressed = true;
-                        break;
-                    }
-                var block = new BlockWithPosition();
-                while (true)
+                if (_compressedBlocks.Count() >= _threadsCount) continue; //Регулирование одновременно хранимых сжатых блоков
+
+                var block = _readedBlocks.Pop();
+                if (block == null)
                 {
-                    if (_notCompressedBlocks.TryPop(out block)) break;
+                    _compressedBlocks.StopWriting();
+                    return;
                 }
                 block.Block = _blockCompressor.CompressBlock(block.Block);
                 _compressedBlocks.Push(block);
@@ -123,14 +116,12 @@ namespace FileArchiver
         private void writeBlockThread()
         {
             while (true)
-            {
-                lock (_writeLocker)
-                    if (_compressedBlocks.Count == 0 && _isFileCompressed) break;
-                var block = new BlockWithPosition();
-                while (true)
-                {
-                    if (_compressedBlocks.TryPop(out block)) break;
-                }
+            {              
+               
+                var block =  _compressedBlocks.Pop();
+                if (block == null) return;
+                Console.WriteLine(block.Position);
+
                 var blockWithPosLen = new byte[8 + 4 + block.Block.Length];
                 BitConverter.GetBytes(block.Position).CopyTo(blockWithPosLen, 0);
                 BitConverter.GetBytes(block.Block.Length).CopyTo(blockWithPosLen, 8);
@@ -163,7 +154,7 @@ namespace FileArchiver
 
                 var readThreads = new List<Thread>();
                 var compressThreads = new List<Thread>();
-                var writeThreads = new List<Thread>();
+                var writeThreads = new List<Thread>();//Возможно следовало бы в одном потоке крутить, но решил как и остальные на несколько делить
 
                 for (int i = 0; i < _threadsCount; i++)
                 {
@@ -187,8 +178,6 @@ namespace FileArchiver
             catch (Exception ex)
             {
                 Console.WriteLine($"{ex.Message}, {ex.StackTrace}");
-                Console.WriteLine($"{ex.InnerException.Message}, {ex.InnerException.StackTrace}");
-
                 if (File.Exists(outputFilePath)) File.Delete(outputFilePath);
                 return false;
             }
