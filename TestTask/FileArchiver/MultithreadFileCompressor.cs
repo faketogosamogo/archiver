@@ -52,7 +52,7 @@ namespace FileArchiver
         private ConcurrencyBlockStack _readedBlocks;
         private ConcurrencyBlockStack _compressedBlocks;
         public MultithreadFileCompressor(IBlockCompressor blockCompressor, IBlockStreamWriter blockWriter, IBlockStreamReader blockReader,
-                                         int threadsCount=5, int blockLen = (1024*1024)*10)
+                                         int threadsCount=5, int blockLen = (1024*1024))
         {
             _blockCompressor = blockCompressor;
             _blockReader = blockReader;

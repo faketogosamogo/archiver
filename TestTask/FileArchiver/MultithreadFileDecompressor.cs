@@ -31,7 +31,7 @@ namespace FileArchiver
         private ConcurrencyBlockStack _readedBlocks;
         private ConcurrencyBlockStack _decompressedBlocks;
         public MultithreadFileDecompressor(IBlockDecompressor blockDecompressor, IBlockStreamWriter blockWriter, IBlockStreamReader blockReader, 
-                                           int threadsCount=1)
+                                           int threadsCount=5)
         {
             _blockDecompressor = blockDecompressor;
             _blockReader = blockReader;
@@ -64,7 +64,7 @@ namespace FileArchiver
                         var blockLenBuf = new byte[4];
                         _inputFile.Read(blockLenBuf);
                         int blockLen = BitConverter.ToInt32(blockLenBuf);
-
+                        block.Position = blockPos;
                         block.Block = _blockReader.ReadBlock(_inputFile, _inputFile.Position, blockLen);
                         if (block.Block.Length == 0) return;
                     }
@@ -135,7 +135,6 @@ namespace FileArchiver
                 {
                     readThreads.Add(new Thread(readBlocksThread));
                     decompressThreads.Add(new Thread(decompressBlockThread));
-                    decompressThreads[i].Name = $"{i} thread";
                     writeThreads.Add(new Thread(writeBlocksThread));
                 }
                 for (int i = 0; i < _threadsCount; i++)

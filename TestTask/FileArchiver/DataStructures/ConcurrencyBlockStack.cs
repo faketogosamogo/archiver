@@ -11,7 +11,7 @@ namespace FileArchiver.DataStructures
     /// </summary>
     public class ConcurrencyBlockStack
     {
-        private  object _blocksLocker;
+        private object _blocksLocker;
         private Stack<BlockWithPosition> _blocks;
 
         private bool _isStopWritingBlocks;
@@ -66,7 +66,7 @@ namespace FileArchiver.DataStructures
             lock (_blocksLocker)//Не уверен, что нужен отдельный locker, т.к обращаемся и из другой функции
             {
                 _isStopWritingBlocks = true;
-                //Monitor.PulseAll(_blocksLocker);
+                if(_blocks.Count==0) Monitor.PulseAll(_blocksLocker);
             }
         }
         /// <summary>
