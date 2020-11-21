@@ -43,7 +43,7 @@ namespace FileArchiver.DataStructures
             lock (_blocksLocker)
             {
                 BlockWithPosition block = null;
-                while (!_isStopWritingBlocks && _blocks.Count==0)
+                while (!_isStopWritingBlocks && _blocks.Count==0) 
                 {
                     Monitor.Wait(_blocksLocker);
                 }

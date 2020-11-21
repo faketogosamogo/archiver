@@ -2,9 +2,7 @@
 using System.Collections.Generic;
 using System.IO;
 using System.Threading;
-using System.Collections.Concurrent;
 using FileArchiver.BlockServices;
-using FileArchiver.BlockServices.Exceptions;
 using FileArchiver.DataStructures;
 
 namespace FileArchiver
@@ -24,7 +22,6 @@ namespace FileArchiver
         //количество одновременно запускаемых потоков
         private static int _threadsCount;
 
-        private static bool _isFileClosed;
         private static object _readLocker = new object();
         private static object _writeLocker = new object();
 
@@ -66,7 +63,11 @@ namespace FileArchiver
                         int blockLen = BitConverter.ToInt32(blockLenBuf);
                         block.Position = blockPos;
                         block.Block = _blockReader.ReadBlock(_inputFile, _inputFile.Position, blockLen);
-                        if (block.Block.Length == 0) return;
+                        if (block.Block.Length == 0)
+                        {
+                            _readedBlocks.StopWriting();
+                            return;
+                        }
                     }
                     catch (Exception ex)
                     {

@@ -1,9 +1,7 @@
 ﻿using System;
-using System.Collections.Generic;
 using System.IO;
-using System.Security.Cryptography;
-using System.Text;
 using FileArchiver;
+using FileArchiver.BlockServices;
 using NUnit.Framework;
 namespace FileArchiverTest
 {
@@ -16,30 +14,32 @@ namespace FileArchiverTest
         [Test]
         public void Decompressed_file_should_be_equal_source_file()
         {
-            int len = (1024 * 1024) * 10;
-            byte[] expectedData = new byte[len];
-            new Random().NextBytes(expectedData);
+           
+                int len = (1024 * 1024);
+                byte[] expectedData = new byte[len];
+                new Random().NextBytes(expectedData);
 
-            using (var sourceFile = File.OpenWrite("forTest.test"))
-            {
-                sourceFile.Write(expectedData);
-            }
+                using (var sourceFile = File.OpenWrite("forTest.test"))
+                {
+                    sourceFile.Write(expectedData);
+                }
 
-            fileCompressor.CompressFile("forTest.test", "forTest.gzip");
-            fileDecompressor.DecompressFile("forTest.gzip", "forTestAfter.gzip");
-            byte[] buf = new byte[len];
+                fileCompressor.CompressFile("forTest.test", "forTest.gzip");
+                fileDecompressor.DecompressFile("forTest.gzip", "forTestAfter.gzip");
+                byte[] buf = new byte[len];
 
-            using (var decompressedFile = File.OpenRead("forTestAfter.gzip"))
-            {
-                decompressedFile.Read(buf);
-            }
+                using (var decompressedFile = File.OpenRead("forTestAfter.gzip"))
+                {
+                    decompressedFile.Read(buf);
+                }
 
 
-            Assert.AreEqual(expectedData, buf);
+                Assert.AreEqual(expectedData, buf);
 
-            File.Delete("forTest.test");
-            File.Delete("forTest.gzip");
-            File.Delete("forTestAfter.gzip");
+                File.Delete("forTest.test");
+                File.Delete("forTest.gzip");
+                File.Delete("forTestAfter.gzip");
+           
         }
     }
 }

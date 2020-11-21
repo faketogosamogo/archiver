@@ -5,6 +5,8 @@ using System.Threading;
 using FileArchiver.BlockServices;
 using FileArchiver.DataStructures;
 using FileArchiver.BlockServices.Exceptions;
+using System.Security.Cryptography;
+using System.Collections.Concurrent;
 
 namespace FileArchiver
 {
@@ -47,10 +49,12 @@ namespace FileArchiver
         private static int _threadsCount;
 
         private static object _writeLocker = new object();        
-        private static string _inputFilePath;      
+        private static object _compressLocker = new object();        
+        private static string _inputFilePath;
+        private static bool _fileIsEnd;
 
-        private ConcurrencyBlockStack _readedBlocks;
-        private ConcurrencyBlockStack _compressedBlocks;
+        private ConcurrentStack<BlockWithPosition> _readedBlocks;
+        private ConcurrentStack<BlockWithPosition> _compressedBlocks;
         public MultithreadFileCompressor(IBlockCompressor blockCompressor, IBlockStreamWriter blockWriter, IBlockStreamReader blockReader,
                                          int threadsCount=5, int blockLen = (1024*1024))
         {
@@ -60,14 +64,14 @@ namespace FileArchiver
             _blockLen = blockLen;
             _threadsCount = threadsCount;
 
-            _readedBlocks = new ConcurrencyBlockStack();
-            _compressedBlocks = new ConcurrencyBlockStack();
+            _readedBlocks = new ConcurrentStack<BlockWithPosition>();
+            _compressedBlocks = new ConcurrentStack<BlockWithPosition>();
         }     
         private void readBlocksThread()
         {
             while (true)
             {
-                if (_readedBlocks.Count() >= _threadsCount) continue; //Регулирование одновременно хранимых считанных блоков
+                if (_readedBlocks.Count >= _threadsCount) continue; //Регулирование одновременно хранимых считанных блоков
                 long pos = 0;
                 using var inputFile = File.OpenRead(_inputFilePath);
 
@@ -77,7 +81,7 @@ namespace FileArchiver
                     _currentReadIndex++;
                     if (pos >= inputFile.Length)
                     {
-                        _readedBlocks.StopWriting();
+                        _fileIsEnd = true;
                         break;
                     }
                 }
@@ -102,12 +106,14 @@ namespace FileArchiver
         {
             while (true)
             {
-                if (_compressedBlocks.Count() >= _threadsCount) continue; //Регулирование одновременно хранимых сжатых блоков
+                if (_compressedBlocks.Count >= _threadsCount) continue; //Регулирование одновременно хранимых сжатых блоков
+                BlockWithPosition block = new BlockWithPosition();
 
-                var block = _readedBlocks.Pop();
+                lock (_compressLocker) {
+                    while (_readedBlocks.TryPop(out block) == false && ) { }
+                }
                 if (block == null)
                 {
-                    _compressedBlocks.StopWriting();
                     return;
                 }
                 block.Block = _blockCompressor.CompressBlock(block.Block);
@@ -131,6 +137,10 @@ namespace FileArchiver
                 {
                     try
                     {
+                        MD5 md = MD5.Create();
+
+                      //  Console.WriteLine($"pos: {block.Position} {Convert.ToBase64String(md.ComputeHash(block.Block))}");
+
                         _blockWriter.WriteBlock(_outputFile, _outputFile.Position, blockWithPosLen);
                     }
                     catch (Exception ex)
