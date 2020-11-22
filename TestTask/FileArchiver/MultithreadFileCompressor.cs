@@ -220,9 +220,7 @@ namespace FileArchiver
        
         public bool CompressFile(string inputFilePath, string outputFilePath)
         {
-            _inputFilePath = inputFilePath;
-
-            
+            _inputFilePath = inputFilePath;            
             _outputFile = File.OpenWrite(outputFilePath);
 
 
