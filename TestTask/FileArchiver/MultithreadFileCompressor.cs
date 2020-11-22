@@ -15,7 +15,7 @@ namespace FileArchiver
     ///Вначале записывается позиция блока в исходном файле, далее длина записанного блока, далее сам блок.
 
     ///С организацией нагрузки не справился, думал брать из ComputerInfo.AvailableVirtualMemory, и назначать размеру блока количество свободной оперативной памяти/(количество потоков ^ 3),
-        ///(количество потоков ^ 3) т.ктакое количество у меня может в раз находиться в худшем раскладе(в моём представлении)в каждом потоке вызывается количество считываний равное потокам
+        ///(количество потоков ^ 3) т.к такое количество у меня может в раз находиться в худшем раскладе(в моём представлении)в каждом потоке вызывается количество считываний равное потокам
     ///Но не нашёл его аналога, поэтому пока решил оставить так.
    
     public class MultithreadFileCompressor : IFileCompressor
@@ -82,6 +82,25 @@ namespace FileArchiver
         private object _writeLocker = new object();        
         private string _inputFilePath;
 
+        private object _threadsExceptionLocker = new object();
+        private Exception _threadsException;
+        private Exception _lockedThreadsException
+        {
+            get
+            {
+                lock (_threadsExceptionLocker)
+                {
+                    return _threadsException;
+                }
+            }
+            set
+            {
+                lock (_threadsExceptionLocker)
+                {
+                    _threadsException = value;
+                }
+            }
+        }
         private ConcurrentBlockStack _readedBlocks;
         private ConcurrentBlockStack _compressedBlocks;
         public MultithreadFileCompressor(IBlockCompressor blockCompressor, IBlockStreamWriter blockWriter, IBlockStreamReader blockReader, 
@@ -100,8 +119,10 @@ namespace FileArchiver
 
         private void readBlockThread()
         {
+            if (_lockedThreadsException != null) return;
+
             while (true)
-            {                
+            {               
                 using var inputFile = File.OpenRead(_inputFilePath);
                 long pos = 0;
                 lock (_currentReadIndexLocker)
@@ -122,15 +143,17 @@ namespace FileArchiver
                 }
                 catch (Exception ex)
                 {
-                    Console.WriteLine($"Исключение чтения блока: {ex.Message}");
+                    _lockedThreadsException = ex;
+                    break;
                 }
                 _readedBlocks.Push(new BlockWithPosition(block, pos));
-            }
-          
+            }          
 
         }
         private void compressBlockThread()
         {
+            if (_lockedThreadsException != null) return;
+
             while (true)
             {
                 BlockWithPosition block = null;
@@ -145,7 +168,8 @@ namespace FileArchiver
                 }
                 catch (Exception ex)
                 {
-                    Console.WriteLine($"Исключение сжатия блока: {ex.Message}");
+                    _lockedThreadsException = ex;
+                    break;
                 }
 
                 _compressedBlocks.Push(block);
@@ -162,9 +186,10 @@ namespace FileArchiver
 
         private void writeBlockThread()
         {
+            if (_lockedThreadsException != null) return;
+
             while (true)
             {
-
                 BlockWithPosition block = null;
 
                 while (_compressedBlocks.TryPop(out block) == false && _lockedIsFileCompressed==false) {}
@@ -183,55 +208,55 @@ namespace FileArchiver
                     }
                     catch (Exception ex)
                     {
-                        Console.WriteLine($"Исключение записи блока: {ex.Message}");
+                        _lockedThreadsException = ex;
+                        break;
                     }
                 }
             }
         }
-       
+         
       
        
         public bool CompressFile(string inputFilePath, string outputFilePath)
         {
             _inputFilePath = inputFilePath;
 
-            try
+            
+            _outputFile = File.OpenWrite(outputFilePath);
+
+
+            var readThreads = new List<Thread>();
+            var compressThreads = new List<Thread>();
+            var writeThreads = new List<Thread>();
+
+            for (int i = 0; i < _threadsCount; i++)
             {
-                _outputFile = File.OpenWrite(outputFilePath);
-
-
-                var readThreads = new List<Thread>();
-                var compressThreads = new List<Thread>();
-                var writeThreads = new List<Thread>();
-
-                for (int i = 0; i < _threadsCount; i++)
-                {
-                    readThreads.Add(new Thread(readBlockThread));
-                    compressThreads.Add(new Thread(compressBlockThread));
-                    writeThreads.Add(new Thread(writeBlockThread));
-                }
-                for (int i = 0; i < _threadsCount; i++)
-                {
-                    readThreads[i].Start();
-                    compressThreads[i].Start();
-                    writeThreads[i].Start();
-                }
-                for (int i = 0; i < _threadsCount; i++)
-                {
-                    readThreads[i].Join();
-                    compressThreads[i].Join();
-                    writeThreads[i].Join();
-                }
+                readThreads.Add(new Thread(readBlockThread));
+                compressThreads.Add(new Thread(compressBlockThread));
+                writeThreads.Add(new Thread(writeBlockThread));
             }
-            catch (Exception ex)
+            for (int i = 0; i < _threadsCount; i++)
             {
-                Console.WriteLine($"{ex.Message}");
+                readThreads[i].Start();
+                compressThreads[i].Start();
+                writeThreads[i].Start();
+            }
+            for (int i = 0; i < _threadsCount; i++)
+            {
+                    
+                readThreads[i].Join();
+                compressThreads[i].Join();
+                writeThreads[i].Join();
+            }
+         
+          
+            _outputFile.Dispose();
+            if (_threadsException != null)
+            {
                 if (File.Exists(outputFilePath)) File.Delete(outputFilePath);
+                Console.WriteLine($"Во время сжатия файла произошло исключение: {_threadsException.Message}, trace: {_threadsException.StackTrace}");
                 return false;
-            }
-            finally
-            {
-                _outputFile.Dispose();
+
             }
             return true;
         }

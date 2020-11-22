@@ -70,6 +70,27 @@ namespace FileArchiver
         private object _readLocker = new object();
         private object _writeLocker = new object();
 
+        private object _threadsExceptionLocker = new object();
+        private Exception _threadsException;
+
+        private Exception _lockedThreadsException
+        {
+            get
+            {
+                lock (_threadsExceptionLocker)
+                {
+                    return _threadsException;
+                }
+            }
+            set
+            {
+                lock (_threadsExceptionLocker)
+                {
+                    _threadsException = value;
+                }
+            }
+        }
+
         private ConcurrentBlockStack _readedBlocks;
         private ConcurrentBlockStack _decompressedBlocks;
         public MultithreadFileDecompressor(IBlockDecompressor blockDecompressor, IBlockStreamWriter blockWriter, IBlockStreamReader blockReader,
@@ -86,9 +107,12 @@ namespace FileArchiver
 
         private void readBlocksThread()
         {
+            
+            if (_lockedThreadsException != null) return;
+            
             while (true)
             {
-              
+               
                 lock (_readLocker)
                 {
                     var block = new BlockWithPosition();
@@ -111,7 +135,8 @@ namespace FileArchiver
                     }
                     catch (Exception ex)
                     {
-                        Console.WriteLine($"Исключение чтения блока: {ex.Message}");
+                        _lockedThreadsException = ex;                        
+                        break;
                     }
                     _readedBlocks.Push(block);
                 }
@@ -120,6 +145,9 @@ namespace FileArchiver
 
         private void decompressBlockThread()
         {
+           
+            if (_lockedThreadsException != null) return;
+            
             while (true)
             {
                 BlockWithPosition block = null;
@@ -134,7 +162,8 @@ namespace FileArchiver
                 }
                 catch (Exception ex)
                 {
-                    Console.WriteLine($"Исключение расжатия блока: {ex.Message}");
+                    _lockedThreadsException = ex;                    
+                    break;
                 }
 
                 _decompressedBlocks.Push(block);
@@ -151,8 +180,10 @@ namespace FileArchiver
 
         private void writeBlocksThread()
         {
+            if (_lockedThreadsException != null) return;
+           
             while (true)
-            {    
+            {                
                 var block = new BlockWithPosition();
 
                 while (_decompressedBlocks.TryPop(out block) == false && _lockedIsFileDecompressed == false){}
@@ -165,15 +196,15 @@ namespace FileArchiver
                     }
                     catch (Exception ex)
                     {
-                        Console.WriteLine($"Исключение записи блока: {ex.Message}");
+                        _lockedThreadsException = ex;                        
+                        break;
                     }
                 }
             }
         }
         public bool DecompressFile(string inputFilePath, string outputFilePath)
         {
-            try
-            {
+          
                 _inputFile = File.OpenRead(inputFilePath);
                 _outputFile = File.OpenWrite(outputFilePath);
 
@@ -199,18 +230,16 @@ namespace FileArchiver
                     decompressThreads[i].Join();
                     writeThreads[i].Join();
                 }
-            }
-            catch (Exception ex)
-            {
-                Console.WriteLine($"{ex.Message}");
-                if (File.Exists(outputFilePath)) File.Delete(outputFilePath);
-                return false;
-            }
-            finally
-            {
                 _inputFile.Dispose();
                 _outputFile.Dispose();
-            }
+
+                if (_lockedThreadsException != null)
+                {
+                    if (File.Exists(outputFilePath)) File.Delete(outputFilePath);
+                    Console.WriteLine($"Во время расжатия файла произошло исключение: {_threadsException.Message}, trace: {_threadsException.StackTrace}");
+                    return false;
+                }
+
             return true;
         }
     }
