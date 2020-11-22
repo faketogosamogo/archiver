@@ -23,6 +23,7 @@ namespace FileArchiver
     {
         public byte[] Block { get; set; }
         public long Position { get; set; }
+        public BlockWithPosition() { }
         public BlockWithPosition(byte[] block, long position)
         {
             Block = block;
@@ -35,80 +36,155 @@ namespace FileArchiver
         private IBlockStreamReader _blockReader;
         private IBlockStreamWriter _blockWriter;
 
-        private static FileStream _outputFile;
+        private FileStream _outputFile;
 
         //используется для поблочого чтения из файла
-        private static long _currentReadIndex = 0;
-        private static object _currentReadIndexLocker = new object();
+        private object _currentReadIndexLocker = new object();
+        private int _currentReadIndex;      
+
+        private object _isFileClosedLocker = new object();
+        private bool _isFileClosed;
+        
+        private object _isFileCompressedLocker = new object();
+        private bool _isFileCompressed;      
+       
+        private bool _lockedIsFileClosed
+        {
+            get
+            {
+                lock (_isFileClosedLocker)
+                {
+                    return _isFileClosed;
+                }
+            }
+            set
+            {
+                lock (_isFileClosedLocker)
+                {
+                    _isFileClosed = value;
+                }
+            }
+        }
+        private bool _lockedIsFileCompressed
+        {
+            get
+            {
+                lock (_isFileCompressedLocker)
+                {
+                    return _isFileCompressed;
+                }
+            }
+            set
+            {
+                lock (_isFileCompressedLocker)
+                {
+                    _isFileCompressed = value;
+                }
+            }
+        }
 
         //длина обрабатываемого блока
-        private static int _blockLen;
+        private int _blockLen;
         //количество одновременно запускаемых потоков
-        private static int _threadsCount;
+        private int _threadsCount;
 
-        private static object _writeLocker = new object();
-        
-        private static string _inputFilePath;  
+        private object _writeLocker = new object();        
+        private string _inputFilePath;
 
-        private static bool _isFileClosed;
+        private object _currentCompressIndexLocker = new object();
+        private int _currentCompressIndex;
 
-       
-        public MultithreadFileCompressor(IBlockCompressor blockCompressor, IBlockStreamWriter blockWriter, IBlockStreamReader blockReader, int threadsCount=5, int blockLen = (1024*1024)*10)
+        private ConcurrentBlockStack _readedBlocks;
+        private ConcurrentBlockStack _compressedBlocks;
+        public MultithreadFileCompressor(IBlockCompressor blockCompressor, IBlockStreamWriter blockWriter, IBlockStreamReader blockReader, 
+            int threadsCount=15, int blockLen = (1024*1024))
         {
             _blockCompressor = blockCompressor;
             _blockReader = blockReader;
             _blockWriter = blockWriter;
             _blockLen = blockLen;
             _threadsCount = threadsCount;
-        }     
-        private void readAndCompressBlocks()
+
+            _currentReadIndex = 0;
+            _readedBlocks = new ConcurrentBlockStack();
+            _compressedBlocks = new ConcurrentBlockStack();
+        }    
+
+        private void readBlockThread()
         {
-            while (!_isFileClosed) {//Чтобы потоки не пересоздавались
-
-                BlockingCollection<BlockWithPosition> blocks = new BlockingCollection<BlockWithPosition>();//Чтобы количество занимаемой памяти приложения не привышало норму
-                for (int i = 0; i < _threadsCount; i++)
+            while (true)
+            {
+                using var inputFile = File.OpenRead(_inputFilePath);
+                long pos = 0;
+                lock (_currentReadIndexLocker)
                 {
-                    long pos = 0;
-                    using var inputFile = File.OpenRead(_inputFilePath);
+                    pos = _currentReadIndex * _blockLen;
+                    if (pos >= inputFile.Length)
+                    {
+                        _lockedIsFileClosed = true;
+                        break;
+                    }
+                    _currentReadIndex++;
+                }             
 
-                    lock (_currentReadIndexLocker)
-                    {
-                        pos = _currentReadIndex * _blockLen;
-                        _currentReadIndex++;
-                        if (pos >= inputFile.Length)
-                        {
-                            _isFileClosed = true;
-                            continue;
-                        }
-                    }
+                byte[] block = null;
+                try
+                {
+                    block = _blockReader.ReadBlock(inputFile, pos, _blockLen);
+                }
+                catch (Exception ex)
+                {
+                    Console.WriteLine($"read ex: {ex.Message}");
+                }
+                _readedBlocks.Push(new BlockWithPosition(block, pos));
+            }
+          
 
-                    byte[] block = null;
-                    try
-                    {
-                        block = _blockReader.ReadBlock(inputFile, pos, _blockLen);
-                        if (block.Length == 0) return;
-                    }catch(Exception ex)
-                    {
-                        throw new ReadBlockException($"Ошибка чтения блока: {ex.Message}, {ex.StackTrace}", ex);
-                    }
-                    try
-                    {
-                        block =  _blockCompressor.CompressBlock(block);
-                    }catch(Exception ex)
-                    {
-                        throw new CompressBlockException($"Ошибка сжатия блока", ex);
-                    }
-                    blocks.Add(new BlockWithPosition(block, pos));
+        }
+        private void compressBlockThread()
+        {
+            while (true)
+            {
+                BlockWithPosition block = null;
+                while (_readedBlocks.TryPop(out block)==false && _lockedIsFileClosed==false) {                  
+                }
+                try
+                {                   
+                    if (block == null)
+                    {                       
+                        break;
+                    }                   
+                    block.Block = _blockCompressor.CompressBlock(block.Block);
+                }catch(Exception ex)
+                {
+                    Console.WriteLine($"compress ex: {ex.Message}");
                 }
 
-                blocks.CompleteAdding();
-                writeBlocks(blocks);//После считывания сжатия порции блоков записываем их в файл
+                _compressedBlocks.Push(block);
+            }
+            lock (_currentCompressIndexLocker)
+            {
+                _currentCompressIndex++;
+            }
+            lock (_currentCompressIndexLocker){
+
+                if(_currentCompressIndex == _threadsCount)
+                {
+                    _lockedIsFileCompressed = true;
+                }
             }
         }
-        private void writeBlocks(BlockingCollection<BlockWithPosition> blocks)
+        private void writeBlockThread()
         {
-           foreach (var block in blocks)
-           {
+            while (true)
+            {
+
+                BlockWithPosition block = null;
+
+                while (_compressedBlocks.TryPop(out block) == false && _lockedIsFileCompressed==false) {
+                }
+                if (block == null) break;
+
                 var blockWithPosLen = new byte[8 + 4 + block.Block.Length];
                 BitConverter.GetBytes(block.Position).CopyTo(blockWithPosLen, 0);
                 BitConverter.GetBytes(block.Block.Length).CopyTo(blockWithPosLen, 8);
@@ -119,13 +195,16 @@ namespace FileArchiver
                     try
                     {
                         _blockWriter.WriteBlock(_outputFile, _outputFile.Position, blockWithPosLen);
-                    }catch(Exception ex)
+                    }
+                    catch (Exception ex)
                     {
-                        throw new WriteBlockException($"Ошибка записи блока", ex);
+                        Console.WriteLine($"write ex: {ex.Message}");
                     }
                 }
-           }
+            }
         }
+       
+      
        
         public bool CompressFile(string inputFilePath, string outputFilePath)
         {
@@ -134,21 +213,37 @@ namespace FileArchiver
             try
             {
                 _outputFile = File.OpenWrite(outputFilePath);
-          
-          
-                List<Thread> threads = new List<Thread>();
 
-                for (int i = 0; i < _threadsCount; i++) threads.Add(new Thread(readAndCompressBlocks));
 
-                foreach (var th in threads) th.Start();
-                foreach (var th in threads) th.Join();
+                var readThreads = new List<Thread>();
+                var compressThreads = new List<Thread>();
+                var writeThreads = new List<Thread>();
+
+                for (int i = 0; i < _threadsCount; i++)
+                {
+                    readThreads.Add(new Thread(readBlockThread));
+                    compressThreads.Add(new Thread(compressBlockThread));
+                    writeThreads.Add(new Thread(writeBlockThread));
+                }
+                for (int i = 0; i < _threadsCount; i++)
+                {
+                    readThreads[i].Start();
+                    compressThreads[i].Start();
+                    writeThreads[i].Start();
+                }
+                for (int i = 0; i < _threadsCount; i++)
+                {
+                    readThreads[i].Join();
+                    compressThreads[i].Join();
+                    writeThreads[i].Join();
+                }
             }
             catch (Exception ex)
             {
-                Console.WriteLine($"{ex.Message}, {ex.StackTrace}"); 
+                Console.WriteLine($"{ex.Message}, {ex.StackTrace}");
                 Console.WriteLine($"{ex.InnerException.Message}, {ex.InnerException.StackTrace}");
 
-                if (File.Exists(outputFilePath)) File.Delete(outputFilePath);                
+                if (File.Exists(outputFilePath)) File.Delete(outputFilePath);
                 return false;
             }
             finally

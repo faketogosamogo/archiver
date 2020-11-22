@@ -1,11 +1,9 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.IO;
-using System.Text;
 using System.Threading;
-using System.Security.Cryptography;
 using System.Collections.Concurrent;
-using FileArchiver.Exceptions;
+
 
 namespace FileArchiver
 {
@@ -18,81 +16,166 @@ namespace FileArchiver
         private IBlockStreamReader _blockReader;
         private IBlockStreamWriter _blockWriter;
 
-        private static FileStream _inputFile;
-        private static FileStream _outputFile;
+        private FileStream _inputFile;
+        private FileStream _outputFile;
 
         //количество одновременно запускаемых потоков
-        private static int _threadsCount;
+        private int _threadsCount;
 
-        private static bool _isFileClosed;
-        private static object _readLocker = new object();
-        private static object _writeLocker = new object();
+        private object _isFileClosedLocker = new object();
+        private bool _isFileClosed;
 
-        public MultithreadFileDecompressor(IBlockDecompressor blockDecompressor, IBlockStreamWriter blockWriter, IBlockStreamReader blockReader, int threadsCount=5)
+        private object _isFileDecompressedLocker = new object();
+        private bool _isFileDecompressed;
+
+        private bool _lockedIsFileClosed
+        {
+            get
+            {
+                lock (_isFileClosedLocker)
+                {
+                    return _isFileClosed;
+                }
+            }
+            set
+            {
+                lock (_isFileClosedLocker)
+                {
+                    _isFileClosed = value;
+                }
+            }
+        }
+        private bool _lockedIsFileDecompressed
+        {
+            get
+            {
+                lock (_isFileDecompressedLocker)
+                {
+                    return _isFileDecompressed;
+                }
+            }
+            set
+            {
+                lock (_isFileDecompressedLocker)
+                {
+                    _isFileDecompressed = value;
+                }
+            }
+        }
+
+        private object _readLocker = new object();
+        private object _writeLocker = new object();
+        private object _decompressLocker = new object();
+
+        private object _currentDecompressIndexLocker = new object();
+        private int _currentDecompressIndex;
+
+        private ConcurrentBlockStack _readedBlocks;
+        private ConcurrentBlockStack _decompressedBlocks;
+        public MultithreadFileDecompressor(IBlockDecompressor blockDecompressor, IBlockStreamWriter blockWriter, IBlockStreamReader blockReader,
+                                           int threadsCount = 15)
         {
             _blockDecompressor = blockDecompressor;
             _blockReader = blockReader;
             _blockWriter = blockWriter;
             _threadsCount = threadsCount;
+
+            _readedBlocks = new ConcurrentBlockStack();
+            _decompressedBlocks = new ConcurrentBlockStack();
         }
-        private void readBlocks()
+
+        private void readBlocksThread()
         {
-            while (!_isFileClosed)
+            while (true)
             {
-                BlockingCollection<BlockWithPosition> blocks = new BlockingCollection<BlockWithPosition>();//Чтобы количество занимаемой памяти приложения не привышало норму
-                for (int i = 0; i < _threadsCount; i++)
+              
+                lock (_readLocker)
                 {
-                    lock (_readLocker)
+                    var block = new BlockWithPosition();
+                    try
                     {
                         if (_inputFile.Position >= _inputFile.Length)
                         {
-                            _isFileClosed = true;
-                            continue;
+                            _lockedIsFileClosed = true;
+                            break;
                         }
-                        try
-                        {
-                            var blockPosBuf = new byte[8];
-                            _inputFile.Read(blockPosBuf);
-                            long blockPos = BitConverter.ToInt64(blockPosBuf);
+                        var blockPosBuf = new byte[8];
+                        _inputFile.Read(blockPosBuf);
+                        long blockPos = BitConverter.ToInt64(blockPosBuf);
+                        var blockLenBuf = new byte[4];
+                        _inputFile.Read(blockLenBuf);
+                        int blockLen = BitConverter.ToInt32(blockLenBuf);
 
-                            var blockLenBuf = new byte[4];
-                            _inputFile.Read(blockLenBuf);
-                            int blockLen = BitConverter.ToInt32(blockLenBuf);
-
-                            var block = _blockReader.ReadBlock(_inputFile, _inputFile.Position, blockLen);
-                            if (block.Length == 0) return;
-                            blocks.Add(new BlockWithPosition(block, blockPos));
-                        }catch(Exception ex)
-                        {
-                            throw new ReadBlockException($"Ошибка чтения блока", ex);
-                        }
+                        block.Position = blockPos;
+                        block.Block = _blockReader.ReadBlock(_inputFile, _inputFile.Position, blockLen);
+                        
+                        if (block.Block.Length == 0) return;
                     }
+                    catch (Exception ex)
+                    {
+                        Console.WriteLine($"ex: {ex.Message}");
+                    }
+                    _readedBlocks.Push(block);
                 }
-              
-                blocks.CompleteAdding();
-                decompressAndWriteBlocks(blocks);
             }
         }
-        private void decompressAndWriteBlocks(BlockingCollection<BlockWithPosition> blocks)
+
+        private void decompressBlockThread()
         {
-            foreach (var block in blocks)
+            while (true)
             {
+                BlockWithPosition block = null;
+                while (_readedBlocks.TryPop(out block) == false && _lockedIsFileClosed == false)
+                {
+                }
                 try
                 {
+                    if (block == null)
+                    {
+                        break;
+                    }
                     block.Block = _blockDecompressor.DecompressBlock(block.Block);
-                }catch(Exception ex)
-                {
-                    throw new DecompressBlockException($"Ошибка расжатия блока", ex);
                 }
-               // using var outputFile = new FileStream(_outputFilePath, FileMode.Open, FileAccess.Write, FileShare.Write));
+                catch (Exception ex)
+                {
+                    Console.WriteLine($"compress ex: {ex.Message}");
+                }
+
+                _decompressedBlocks.Push(block);
+            }
+            lock (_currentDecompressIndexLocker)
+            {
+                _currentDecompressIndex++;
+            }
+            lock (_currentDecompressIndexLocker)
+            {
+                if (_currentDecompressIndex == _threadsCount)
+                {
+                    _lockedIsFileDecompressed = true;
+                }
+            }
+        }
+
+        private void writeBlocksThread()
+        {
+            while (true)
+            {    
+                var block = new BlockWithPosition();
+
+                while (_decompressedBlocks.TryPop(out block) == false && _lockedIsFileDecompressed == false)
+                {
+                }
+                if (block == null) break;
+
                 lock (_writeLocker)
                 {
                     try
                     {
                         _blockWriter.WriteBlock(_outputFile, block.Position, block.Block);
-                    }catch(Exception ex)
+                    }
+                    catch (Exception ex)
                     {
-                        throw new WriteBlockException($"Ошибка записи блока", ex);
+                        Console.WriteLine($"ex: {ex.Message}");
                     }
                 }
             }
@@ -104,20 +187,39 @@ namespace FileArchiver
                 _inputFile = File.OpenRead(inputFilePath);
                 _outputFile = File.OpenWrite(outputFilePath);
 
-                List<Thread> threads = new List<Thread>();
-                for (int i = 0; i < _threadsCount; i++) threads.Add(new Thread(readBlocks));
-                foreach (var th in threads) th.Start();
-                foreach (var th in threads) th.Join();
+                var readThreads = new List<Thread>();
+                var decompressThreads = new List<Thread>();
+                var writeThreads = new List<Thread>();
+
+                for (int i = 0; i < _threadsCount; i++)
+                {
+                    readThreads.Add(new Thread(readBlocksThread));
+                    decompressThreads.Add(new Thread(decompressBlockThread));
+                    writeThreads.Add(new Thread(writeBlocksThread));
+                }
+                for (int i = 0; i < _threadsCount; i++)
+                {
+                    readThreads[i].Start();
+                    decompressThreads[i].Start();
+                    writeThreads[i].Start();
+                }
+                for (int i = 0; i < _threadsCount; i++)
+                {
+                    readThreads[i].Join();
+                    decompressThreads[i].Join();
+                    writeThreads[i].Join();
+                }
             }
             catch (Exception ex)
             {
                 Console.WriteLine($"{ex.Message}, {ex.StackTrace}");
-                Console.WriteLine($"{ex.InnerException.Message}, {ex.InnerException.StackTrace}");
+                // Console.WriteLine($"{ex.InnerException.Message}, {ex.InnerException.StackTrace}");
                 if (File.Exists(outputFilePath)) File.Delete(outputFilePath);
                 return false;
             }
             finally
             {
+                Console.WriteLine("5");
                 _inputFile.Dispose();
                 _outputFile.Dispose();
             }
@@ -125,3 +227,4 @@ namespace FileArchiver
         }
     }
 }
+
