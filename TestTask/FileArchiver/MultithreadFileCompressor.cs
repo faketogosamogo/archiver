@@ -10,11 +10,8 @@ namespace FileArchiver
 {
     /// <summary>
     /// Мультипоточная реализация IFileCompressor.
-    /// В своей реализации работает поблочно с файлом.
-    /// (Считывает и Сжимает) блоки -> Записывает блоки.
-    ///Запись в файл происходит постепенно(не мультипоточно).
-    ///Это было выбрано в связи с тем, что в конечном итоге при использовании нескольких потоков для ускорения сжатия, минимально возможное время сводится к записи в файл,
-    ///т.к разбивать поблочно файл для записи нецелесообразно в связи с неизвестностью размера сжатых блоков
+    /// В своей реализации работает поблочно с файлом.    
+    /// Используются потоки на чтение, сжатие и запись
     ///Вначале записывается позиция блока в исходном файле, далее длина записанного блока, далее сам блок.
 
     ///С организацией нагрузки не справился, думал брать из ComputerInfo.AvailableVirtualMemory, и назначать размеру блока количество свободной оперативной памяти/(количество потоков ^ 3),
@@ -31,7 +28,10 @@ namespace FileArchiver
 
         //используется для поблочого чтения из файла
         private object _currentReadIndexLocker = new object();
-        private int _currentReadIndex;      
+        private int _currentReadIndex;
+
+        private object _currentCompressedIndexLocker = new object(); 
+        private int _currentCompressedIndex;//Используется подсчёта количества сжатых блоков
 
         private object _isFileClosedLocker = new object();
         private bool _isFileClosed;
@@ -82,9 +82,6 @@ namespace FileArchiver
         private object _writeLocker = new object();        
         private string _inputFilePath;
 
-        private object _currentCompressIndexLocker = new object();
-        private int _currentCompressIndex;
-
         private ConcurrentBlockStack _readedBlocks;
         private ConcurrentBlockStack _compressedBlocks;
         public MultithreadFileCompressor(IBlockCompressor blockCompressor, IBlockStreamWriter blockWriter, IBlockStreamReader blockReader, 
@@ -125,7 +122,7 @@ namespace FileArchiver
                 }
                 catch (Exception ex)
                 {
-                    Console.WriteLine($"read ex: {ex.Message}");
+                    Console.WriteLine($"Исключение чтения блока: {ex.Message}");
                 }
                 _readedBlocks.Push(new BlockWithPosition(block, pos));
             }
@@ -137,34 +134,32 @@ namespace FileArchiver
             while (true)
             {
                 BlockWithPosition block = null;
-                while (_readedBlocks.TryPop(out block)==false && _lockedIsFileClosed==false) {                  
-                }
+                while (_readedBlocks.TryPop(out block) == false && _lockedIsFileClosed == false) { }              
                 try
-                {                   
-                    if (block == null)
-                    {                       
-                        break;
-                    }                   
-                    block.Block = _blockCompressor.CompressBlock(block.Block);
-                }catch(Exception ex)
                 {
-                    Console.WriteLine($"compress ex: {ex.Message}");
+                    if (block == null)
+                    {
+                        break;
+                    }
+                    block.Block = _blockCompressor.CompressBlock(block.Block);
+                }
+                catch (Exception ex)
+                {
+                    Console.WriteLine($"Исключение сжатия блока: {ex.Message}");
                 }
 
                 _compressedBlocks.Push(block);
             }
-            lock (_currentCompressIndexLocker)
+            lock (_currentCompressedIndexLocker)
             {
-                _currentCompressIndex++;
-            }
-            lock (_currentCompressIndexLocker){
-
-                if(_currentCompressIndex == _threadsCount)
+                _currentCompressedIndex++;
+                if (_currentCompressedIndex == _threadsCount)
                 {
                     _lockedIsFileCompressed = true;
                 }
             }
         }
+
         private void writeBlockThread()
         {
             while (true)
@@ -172,8 +167,7 @@ namespace FileArchiver
 
                 BlockWithPosition block = null;
 
-                while (_compressedBlocks.TryPop(out block) == false && _lockedIsFileCompressed==false) {
-                }
+                while (_compressedBlocks.TryPop(out block) == false && _lockedIsFileCompressed==false) {}
                 if (block == null) break;
 
                 var blockWithPosLen = new byte[8 + 4 + block.Block.Length];
@@ -189,7 +183,7 @@ namespace FileArchiver
                     }
                     catch (Exception ex)
                     {
-                        Console.WriteLine($"write ex: {ex.Message}");
+                        Console.WriteLine($"Исключение записи блока: {ex.Message}");
                     }
                 }
             }
@@ -231,9 +225,7 @@ namespace FileArchiver
             }
             catch (Exception ex)
             {
-                Console.WriteLine($"{ex.Message}, {ex.StackTrace}");
-                Console.WriteLine($"{ex.InnerException.Message}, {ex.InnerException.StackTrace}");
-
+                Console.WriteLine($"{ex.Message}");
                 if (File.Exists(outputFilePath)) File.Delete(outputFilePath);
                 return false;
             }

@@ -29,6 +29,9 @@ namespace FileArchiver
         private object _isFileDecompressedLocker = new object();
         private bool _isFileDecompressed;
 
+        private object _currentDecompressedIndexLocker = new object();
+        private int _currentDecompressedIndex;
+
         private bool _lockedIsFileClosed
         {
             get
@@ -66,10 +69,6 @@ namespace FileArchiver
 
         private object _readLocker = new object();
         private object _writeLocker = new object();
-        private object _decompressLocker = new object();
-
-        private object _currentDecompressIndexLocker = new object();
-        private int _currentDecompressIndex;
 
         private ConcurrentBlockStack _readedBlocks;
         private ConcurrentBlockStack _decompressedBlocks;
@@ -108,13 +107,11 @@ namespace FileArchiver
                         int blockLen = BitConverter.ToInt32(blockLenBuf);
 
                         block.Position = blockPos;
-                        block.Block = _blockReader.ReadBlock(_inputFile, _inputFile.Position, blockLen);
-                        
-                        if (block.Block.Length == 0) return;
+                        block.Block = _blockReader.ReadBlock(_inputFile, _inputFile.Position, blockLen);                        
                     }
                     catch (Exception ex)
                     {
-                        Console.WriteLine($"ex: {ex.Message}");
+                        Console.WriteLine($"Исключение чтения блока: {ex.Message}");
                     }
                     _readedBlocks.Push(block);
                 }
@@ -126,9 +123,7 @@ namespace FileArchiver
             while (true)
             {
                 BlockWithPosition block = null;
-                while (_readedBlocks.TryPop(out block) == false && _lockedIsFileClosed == false)
-                {
-                }
+                while (_readedBlocks.TryPop(out block) == false && _lockedIsFileClosed == false){}
                 try
                 {
                     if (block == null)
@@ -139,22 +134,19 @@ namespace FileArchiver
                 }
                 catch (Exception ex)
                 {
-                    Console.WriteLine($"compress ex: {ex.Message}");
+                    Console.WriteLine($"Исключение расжатия блока: {ex.Message}");
                 }
 
                 _decompressedBlocks.Push(block);
             }
-            lock (_currentDecompressIndexLocker)
+            lock (_currentDecompressedIndexLocker)
             {
-                _currentDecompressIndex++;
-            }
-            lock (_currentDecompressIndexLocker)
-            {
-                if (_currentDecompressIndex == _threadsCount)
+                _currentDecompressedIndex++; 
+                if (_currentDecompressedIndex == _threadsCount)
                 {
                     _lockedIsFileDecompressed = true;
                 }
-            }
+            }           
         }
 
         private void writeBlocksThread()
@@ -163,11 +155,8 @@ namespace FileArchiver
             {    
                 var block = new BlockWithPosition();
 
-                while (_decompressedBlocks.TryPop(out block) == false && _lockedIsFileDecompressed == false)
-                {
-                }
+                while (_decompressedBlocks.TryPop(out block) == false && _lockedIsFileDecompressed == false){}
                 if (block == null) break;
-
                 lock (_writeLocker)
                 {
                     try
@@ -176,7 +165,7 @@ namespace FileArchiver
                     }
                     catch (Exception ex)
                     {
-                        Console.WriteLine($"ex: {ex.Message}");
+                        Console.WriteLine($"Исключение записи блока: {ex.Message}");
                     }
                 }
             }
@@ -213,14 +202,12 @@ namespace FileArchiver
             }
             catch (Exception ex)
             {
-                Console.WriteLine($"{ex.Message}, {ex.StackTrace}");
-                // Console.WriteLine($"{ex.InnerException.Message}, {ex.InnerException.StackTrace}");
+                Console.WriteLine($"{ex.Message}");
                 if (File.Exists(outputFilePath)) File.Delete(outputFilePath);
                 return false;
             }
             finally
             {
-                Console.WriteLine("5");
                 _inputFile.Dispose();
                 _outputFile.Dispose();
             }
