@@ -104,7 +104,7 @@ namespace FileArchiver
         private ConcurrentBlockStack _readedBlocks;
         private ConcurrentBlockStack _compressedBlocks;
         public MultithreadFileCompressor(IBlockCompressor blockCompressor, IBlockStreamWriter blockWriter, IBlockStreamReader blockReader, 
-            int threadsCount=15, int blockLen = (1024*1024))
+            int threadsCount=15, int blockLen = (1024*1024)*10)
         {
             _blockCompressor = blockCompressor;
             _blockReader = blockReader;
@@ -119,10 +119,10 @@ namespace FileArchiver
 
         private void readBlockThread()
         {
-            if (_lockedThreadsException != null) return;
-
+            if (_lockedThreadsException != null) return;           
             while (true)
-            {               
+            {
+                if (_readedBlocks.Count() >= _threadsCount) continue;
                 using var inputFile = File.OpenRead(_inputFilePath);
                 long pos = 0;
                 lock (_currentReadIndexLocker)
@@ -156,6 +156,7 @@ namespace FileArchiver
 
             while (true)
             {
+                if (_compressedBlocks.Count() >= _threadsCount) continue;
                 BlockWithPosition block = null;
                 while (_readedBlocks.TryPop(out block) == false && _lockedIsFileClosed == false) { }              
                 try

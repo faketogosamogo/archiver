@@ -14,7 +14,7 @@ namespace FileArchiverTest
         [Test]
         public void Decompressed_file_should_be_equal_source_file()
         {
-            int len = (1024 * 1024) * 10;
+            int len = (1024 * 1024)*10;
             byte[] expectedData = new byte[len];
             new Random().NextBytes(expectedData);
 

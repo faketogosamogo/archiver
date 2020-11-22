@@ -2,7 +2,7 @@
 using System.IO;
 using FileArchiver.BlockServices;
 using NUnit.Framework;
-namespace FileArchiverTest
+namespace FileArchiverTest.BlockServicesTests
 {
     [TestFixture]
     class BlockStreamReaderTests

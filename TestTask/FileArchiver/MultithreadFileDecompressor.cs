@@ -112,7 +112,8 @@ namespace FileArchiver
             
             while (true)
             {
-               
+                if (_readedBlocks.Count() >= _threadsCount) continue;
+
                 lock (_readLocker)
                 {
                     var block = new BlockWithPosition();
@@ -150,6 +151,8 @@ namespace FileArchiver
             
             while (true)
             {
+                if (_decompressedBlocks.Count() >= _threadsCount) continue;
+
                 BlockWithPosition block = null;
                 while (_readedBlocks.TryPop(out block) == false && _lockedIsFileClosed == false){}
                 try

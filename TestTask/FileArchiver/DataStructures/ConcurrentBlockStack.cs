@@ -4,7 +4,7 @@ using System.Text;
 
 namespace FileArchiver.DataStructures
 {
-    class ConcurrentBlockStack
+    public class ConcurrentBlockStack
     {
         private Stack<BlockWithPosition> _blocks;
         private object _blocksLocker;

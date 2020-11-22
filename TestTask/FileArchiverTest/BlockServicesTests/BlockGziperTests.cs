@@ -3,7 +3,7 @@ using System.IO;
 using System.IO.Compression;
 using FileArchiver.BlockServices;
 using NUnit.Framework;
-namespace FileArchiverTest
+namespace FileArchiverTest.BlockServicesTests
 {
     [TestFixture]
     public class BlockGziperTests
