@@ -3,7 +3,8 @@ using System.Collections.Generic;
 using System.IO;
 using System.Threading;
 using System.Collections.Concurrent;
-using FileArchiver.Exceptions;
+using FileArchiver.BlockServices;
+using FileArchiver.DataStructures;
 
 namespace FileArchiver
 {
@@ -19,17 +20,7 @@ namespace FileArchiver
     ///С организацией нагрузки не справился, думал брать из ComputerInfo.AvailableVirtualMemory, и назначать размеру блока количество свободной оперативной памяти/(количество потоков ^ 3),
         ///(количество потоков ^ 3) т.ктакое количество у меня может в раз находиться в худшем раскладе(в моём представлении)в каждом потоке вызывается количество считываний равное потокам
     ///Но не нашёл его аналога, поэтому пока решил оставить так.
-    class BlockWithPosition
-    {
-        public byte[] Block { get; set; }
-        public long Position { get; set; }
-        public BlockWithPosition() { }
-        public BlockWithPosition(byte[] block, long position)
-        {
-            Block = block;
-            Position = position;
-        }
-    }
+   
     public class MultithreadFileCompressor : IFileCompressor
     {
         private IBlockCompressor _blockCompressor;
@@ -113,7 +104,7 @@ namespace FileArchiver
         private void readBlockThread()
         {
             while (true)
-            {
+            {                
                 using var inputFile = File.OpenRead(_inputFilePath);
                 long pos = 0;
                 lock (_currentReadIndexLocker)

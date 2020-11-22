@@ -2,7 +2,7 @@
 using System.Collections.Generic;
 using System.Text;
 
-namespace FileArchiver.Exceptions
+namespace FileArchiver.BlockServices.Exceptions
 {
     class WriteBlockException : Exception
     {
